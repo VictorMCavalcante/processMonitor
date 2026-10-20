@@ -44,6 +44,7 @@ struct ProcessListView: View {
 
     private func groupRow(_ g: ProcessGroup, maxBytes: UInt64, suspectIds: Set<Int32>) -> some View {
         let isSuspect = g.rows.contains { suspectIds.contains($0.id) }
+        let isRunaway = g.rows.contains { r in store.runaways.contains { $0.id == r.id } }
         let ignored = g.rows.allSatisfy { store.ignore.contains(.of($0)) }
         let stopped = g.rows.contains { $0.snapshot.state == .stopped }
         let selected = selection == .group(g.id)
@@ -57,6 +58,7 @@ struct ProcessListView: View {
                 if let s = g.subtitle { Text(s).foregroundStyle(Theme.muted).font(.system(size: 11)).lineLimit(1) }
                 if stopped && g.kind == .claudeSession { Tag(text: g.rows.filter { $0.snapshot.state == .stopped }.count == 1 ? "1 suspensa" : "suspensas", color: Theme.bad) }
                 else if isSuspect { Tag(text: "esquecido", color: Theme.warn) }
+                if isRunaway { Tag(text: "descontrolado", color: Theme.bad) }
                 if ignored { Tag(text: "ignorado", color: Theme.accent) }
             }),
             memory: AnyView(MemoryBar(bytes: g.footprintBytes, fraction: Double(g.footprintBytes) / Double(maxBytes), color: isSuspect ? Theme.warn : ignored ? Theme.muted2 : Theme.accent)),

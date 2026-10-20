@@ -194,6 +194,7 @@ final class MonitorStore {
         }
         lastMessage = message
         try? await Task.sleep(for: .milliseconds(400))
+        lastPortScan = .distantPast
         await refresh()
         return message
     }
