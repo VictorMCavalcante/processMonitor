@@ -107,7 +107,7 @@ public enum TerminationPlanner {
         case .shell: return true
         case .appProcess:
             let path = group.rows.first?.identified.appBundlePath ?? ""
-            return path.hasPrefix("/System/") || terminalApps.contains(group.rows.first?.identified.title ?? "")
+            return path.hasPrefix("/System/") || path == Classifier.dockerAppPath || terminalApps.contains(group.rows.first?.identified.title ?? "")
         default: break
         }
         if case .signals(let steps) = plan(group, all: all, mode: .normal, myUid: myUid) { return steps.count > 5 }

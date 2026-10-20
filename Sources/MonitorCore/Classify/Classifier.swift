@@ -27,7 +27,24 @@ public struct Identified: Sendable, Equatable {
     }
 }
 
+public struct ClassifyContext: Sendable, Equatable {
+    public var dockerRunning: Bool
+
+    public init(dockerRunning: Bool) {
+        self.dockerRunning = dockerRunning
+    }
+
+    public static let empty = ClassifyContext(dockerRunning: false)
+}
+
 public enum Classifier {
+    public static let dockerAppPath = "/Applications/Docker.app"
+    private static let virtualMachineMarker = "com.apple.Virtualization.VirtualMachine"
+
+    public static func dockerRunning(in snaps: [ProcessSnapshot]) -> Bool {
+        snaps.contains { $0.executablePath?.hasPrefix(dockerAppPath + "/") == true }
+    }
+
     private static let devServers: [(match: @Sendable (String) -> Bool, title: String)] = [
         ({ $0.contains("next-server") || $0.contains("next dev") || $0.contains("/next/dist/bin/next") }, "Next.js dev"),
         ({ $0.contains("/vite") || $0.hasPrefix("vite") }, "Vite dev"),
@@ -48,13 +65,18 @@ public enum Classifier {
     private static let shells: Set<String> = ["zsh", "bash", "fish", "sh"]
     private static let systemPrefixes = ["/System/Library/", "/usr/libexec/", "/usr/sbin/", "/sbin/"]
 
-    public static func classify(_ p: ProcessSnapshot, ports: [UInt16]) -> Identified {
+    public static func classify(_ p: ProcessSnapshot, ports: [UInt16], context: ClassifyContext = .empty) -> Identified {
         let command = p.arguments.joined(separator: " ")
         let exeName = (p.executablePath.map { ($0 as NSString).lastPathComponent }) ?? ""
         let argv0 = p.arguments.first.map { ($0 as NSString).lastPathComponent } ?? ""
         let project = projectName(from: p.cwd)
         let portText = ports.isEmpty ? nil : ports.map { ":\($0)" }.joined(separator: " ")
 
+        if let path = p.executablePath, path.contains(virtualMachineMarker) {
+            return context.dockerRunning
+                ? Identified(kind: .appProcess, title: "Docker Desktop", subtitle: "máquina virtual", appBundlePath: dockerAppPath)
+                : Identified(kind: .system, title: "Máquina virtual")
+        }
         if let path = p.executablePath, systemPrefixes.contains(where: { path.hasPrefix($0) }) {
             let title = outerAppBundle(path).map { (($0 as NSString).lastPathComponent as NSString).deletingPathExtension } ?? p.name
             return Identified(kind: .system, title: title, subtitle: command.isEmpty ? nil : command, project: nil)

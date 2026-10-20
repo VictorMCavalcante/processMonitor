@@ -23,6 +23,7 @@ final class MonitorStore {
     @ObservationIgnored private var systemSampler = SystemSampler()
     @ObservationIgnored private var cpuTracker = CPUTracker()
     var sockets: [ListeningSocket] = []
+    var dockerRunning = false
     @ObservationIgnored private var ports: [Int32: [UInt16]] = [:]
     @ObservationIgnored private var lastPortScan = Date.distantPast
     @ObservationIgnored private var loop: Task<Void, Never>?
@@ -72,9 +73,11 @@ final class MonitorStore {
         let cpu = cpuTracker.update(snaps, at: at)
         let live = snaps.filter { $0.state != .zombie && $0.id != getpid() }
         allSnapshots = snaps
+        let context = ClassifyContext(dockerRunning: Classifier.dockerRunning(in: snaps))
+        dockerRunning = context.dockerRunning
         rows = live.map { snap in
             let p = ports[snap.id] ?? []
-            return ProcessRow(snapshot: snap, identified: Classifier.classify(snap, ports: p), cpuPercent: cpu[snap.id] ?? 0, ports: p)
+            return ProcessRow(snapshot: snap, identified: Classifier.classify(snap, ports: p, context: context), cpuPercent: cpu[snap.id] ?? 0, ports: p)
         }
         var nextStopped: [String: Date] = [:]
         var stoppedByPid: [Int32: Date] = [:]
