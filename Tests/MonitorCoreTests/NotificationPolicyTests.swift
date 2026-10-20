@@ -7,8 +7,9 @@ import Testing
     let t = Date(timeIntervalSince1970: 0)
     #expect(p.evaluate(level: .warning, suspects: [], now: t) == [.pressureRose(.warning)])
     #expect(p.evaluate(level: .warning, suspects: [], now: t.addingTimeInterval(60)).isEmpty)
-    #expect(p.evaluate(level: .critical, suspects: [], now: t.addingTimeInterval(120)).isEmpty)
-    #expect(p.evaluate(level: .critical, suspects: [], now: t.addingTimeInterval(601)) == [.pressureRose(.critical)])
+    #expect(p.evaluate(level: .normal, suspects: [], now: t.addingTimeInterval(120)).isEmpty)
+    #expect(p.evaluate(level: .warning, suspects: [], now: t.addingTimeInterval(180)).isEmpty)
+    #expect(p.evaluate(level: .warning, suspects: [], now: t.addingTimeInterval(601)) == [.pressureRose(.warning)])
 }
 
 @Test func backToNormalResetsLevel() {

@@ -46,6 +46,7 @@ public enum Classifier {
     ]
 
     private static let shells: Set<String> = ["zsh", "bash", "fish", "sh"]
+    private static let systemPrefixes = ["/System/Library/", "/usr/libexec/", "/usr/sbin/", "/sbin/"]
 
     public static func classify(_ p: ProcessSnapshot, ports: [UInt16]) -> Identified {
         let command = p.arguments.joined(separator: " ")
@@ -54,6 +55,10 @@ public enum Classifier {
         let project = projectName(from: p.cwd)
         let portText = ports.isEmpty ? nil : ports.map { ":\($0)" }.joined(separator: " ")
 
+        if let path = p.executablePath, systemPrefixes.contains(where: { path.hasPrefix($0) }) {
+            let title = outerAppBundle(path).map { (($0 as NSString).lastPathComponent as NSString).deletingPathExtension } ?? p.name
+            return Identified(kind: .system, title: title, subtitle: command.isEmpty ? nil : command, project: nil)
+        }
         if let app = outerAppBundle(p.executablePath) {
             let title = ((app as NSString).lastPathComponent as NSString).deletingPathExtension
             return Identified(kind: .appProcess, title: title, subtitle: p.name == title ? nil : p.name, project: nil, appBundlePath: app)
@@ -96,22 +101,49 @@ public enum Classifier {
     }
 
     static func projectName(from cwd: String?) -> String? {
+        ProjectResolver.shared.project(for: cwd)
+    }
+}
+
+extension String {
+    var nilIfEmpty: String? { isEmpty ? nil : self }
+}
+
+public final class ProjectResolver: @unchecked Sendable {
+    public static let shared = ProjectResolver()
+    private let exists: (String) -> Bool
+    private let home: String
+    private var cache: [String: String?] = [:]
+    private let lock = NSLock()
+
+    public init(exists: @escaping (String) -> Bool = { FileManager.default.fileExists(atPath: $0) },
+                home: String = FileManager.default.homeDirectoryForCurrentUser.path) {
+        self.exists = exists
+        self.home = home
+    }
+
+    public func project(for cwd: String?) -> String? {
         guard let cwd, cwd != "/" else { return nil }
-        let home = FileManager.default.homeDirectoryForCurrentUser.path
-        let fm = FileManager.default
+        lock.lock()
+        if let hit = cache[cwd] { lock.unlock(); return hit }
+        lock.unlock()
+        let value = resolve(cwd)
+        lock.lock()
+        cache[cwd] = value
+        lock.unlock()
+        return value
+    }
+
+    private func resolve(_ cwd: String) -> String? {
         var url = URL(fileURLWithPath: cwd)
         var nearest: URL?
         while url.path.count > 1, url.path != home {
-            if fm.fileExists(atPath: url.appendingPathComponent(".git").path) { return url.lastPathComponent }
-            if nearest == nil, ["package.json", "pom.xml", "Cargo.toml"].contains(where: { fm.fileExists(atPath: url.appendingPathComponent($0).path) }) {
+            if exists(url.appendingPathComponent(".git").path) { return url.lastPathComponent }
+            if nearest == nil, ["package.json", "pom.xml", "Cargo.toml"].contains(where: { exists(url.appendingPathComponent($0).path) }) {
                 nearest = url
             }
             url.deleteLastPathComponent()
         }
         return nearest?.lastPathComponent ?? (cwd == home ? nil : URL(fileURLWithPath: cwd).lastPathComponent)
     }
-}
-
-extension String {
-    var nilIfEmpty: String? { isEmpty ? nil : self }
 }

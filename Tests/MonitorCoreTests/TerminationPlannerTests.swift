@@ -67,6 +67,8 @@ import Testing
 }
 
 @Test func activeClaudeNeedsConfirmation() {
-    #expect(TerminationPlanner.needsConfirmation(.fixture(kind: .claudeSession, pids: [1], in: [.fixture(pid: 1, name: "claude")])))
-    #expect(!TerminationPlanner.needsConfirmation(.fixture(kind: .claudeSession, pids: [1], in: [.fixture(pid: 1, name: "claude", state: .stopped)])))
+    let active: [ProcessSnapshot] = [.fixture(pid: 1, name: "claude")]
+    let stopped: [ProcessSnapshot] = [.fixture(pid: 1, name: "claude", state: .stopped)]
+    #expect(TerminationPlanner.needsConfirmation(.fixture(kind: .claudeSession, pids: [1], in: active), all: active, myUid: 501))
+    #expect(!TerminationPlanner.needsConfirmation(.fixture(kind: .claudeSession, pids: [1], in: stopped), all: stopped, myUid: 501))
 }

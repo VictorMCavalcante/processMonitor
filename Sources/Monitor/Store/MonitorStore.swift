@@ -25,6 +25,7 @@ final class MonitorStore {
     @ObservationIgnored private var ports: [Int32: [UInt16]] = [:]
     @ObservationIgnored private var lastPortScan = Date.distantPast
     @ObservationIgnored private var loop: Task<Void, Never>?
+    @ObservationIgnored private var stoppedSince: [String: Date] = [:]
     @ObservationIgnored var onCycle: (@MainActor (MonitorStore) -> Void)?
 
     var groups: [ProcessGroup] {
@@ -70,7 +71,16 @@ final class MonitorStore {
             let p = ports[snap.id] ?? []
             return ProcessRow(snapshot: snap, identified: Classifier.classify(snap, ports: p), cpuPercent: cpu[snap.id] ?? 0, ports: p)
         }
-        suspects = ForgottenDetector.detect(rows, allPids: Set(snaps.map(\.id)), now: at, ignore: ignore)
+        var nextStopped: [String: Date] = [:]
+        var stoppedByPid: [Int32: Date] = [:]
+        for snap in live where snap.state == .stopped {
+            let key = "\(snap.id):\(snap.startTime.timeIntervalSince1970)"
+            let since = stoppedSince[key] ?? at
+            nextStopped[key] = since
+            stoppedByPid[snap.id] = since
+        }
+        stoppedSince = nextStopped
+        suspects = ForgottenDetector.detect(rows, allPids: Set(snaps.map(\.id)), now: at, ignore: ignore, stoppedSince: stoppedByPid)
         onCycle?(self)
     }
 
@@ -87,8 +97,8 @@ final class MonitorStore {
             message = AppTerminator.quit(bundlePath: bundlePath, force: force)
         case .signals(let steps):
             let failures = await Task.detached { TerminationExecutor.run(steps, signaler: SystemSignaler()) }.value
-            let real = failures.values.filter { $0 != "O processo já tinha terminado." }
-            message = real.first
+            let real = failures.values.filter { $0 != TerminationPlanner.alreadyGone }
+            message = real.first ?? (failures.count == steps.count && !steps.isEmpty ? TerminationPlanner.alreadyGone : nil)
         }
         lastMessage = message
         try? await Task.sleep(for: .milliseconds(400))

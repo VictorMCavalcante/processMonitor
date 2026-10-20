@@ -13,11 +13,17 @@ public struct NotificationPolicy: Sendable {
 
     public init() {}
 
+    public init(seen: Set<IgnoreKey>) {
+        seenSuspects = seen
+    }
+
+    public var seen: Set<IgnoreKey> { seenSuspects }
+
     public mutating func evaluate(level: PressureLevel, suspects: [Suspect], now: Date) -> [AlertKind] {
         var alerts: [AlertKind] = []
         if level == .normal {
             notifiedLevel = .normal
-        } else if level > notifiedLevel, lastPressureAlert.map({ now.timeIntervalSince($0) >= Self.pressureCooldown }) ?? true {
+        } else if level > notifiedLevel, level == .critical || (lastPressureAlert.map { now.timeIntervalSince($0) >= Self.pressureCooldown } ?? true) {
             notifiedLevel = level
             lastPressureAlert = now
             alerts.append(.pressureRose(level))

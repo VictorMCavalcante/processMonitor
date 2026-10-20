@@ -78,7 +78,7 @@ struct MainWindow: View {
     }
 
     private func request(_ group: ProcessGroup, _ mode: TerminationMode) {
-        if TerminationPlanner.needsConfirmation(group) || mode == .force {
+        if TerminationPlanner.needsConfirmation(group, all: store.allSnapshots, myUid: getuid()) || mode == .force {
             pending = (group, mode)
         } else {
             Task { _ = await store.close(group, mode: mode) }

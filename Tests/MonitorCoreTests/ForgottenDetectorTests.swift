@@ -10,7 +10,7 @@ import Testing
         ProcessRow.fixture(pid: 3, kind: .mcpServer, ppid: 1),
         ProcessRow.fixture(pid: 4, kind: .devServer, start: now.addingTimeInterval(-3600)),
     ]
-    let s = ForgottenDetector.detect(rows, allPids: [1, 2, 3, 4], now: now, ignore: IgnoreList(defaults: .ephemeral()))
+    let s = ForgottenDetector.detect(rows, allPids: [1, 2, 3, 4], now: now, ignore: IgnoreList(defaults: .ephemeral()), stoppedSince: [2: now.addingTimeInterval(-19 * 86_400)])
     #expect(Set(s.map(\.id)) == [1, 2, 3])
     #expect(s.first { $0.id == 2 }?.hint == "Sessão suspensa (Ctrl+Z) há 19 dias.")
     #expect(s.first { $0.id == 1 }?.hint == "Aberto há 4 dias e quase sem uso de CPU. Provavelmente esquecido.")

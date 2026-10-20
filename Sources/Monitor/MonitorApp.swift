@@ -37,6 +37,7 @@ struct MonitorApp: App {
             for alert in box.policy.evaluate(level: level, suspects: store.suspects, now: store.now) {
                 Notifier.post(alert)
             }
+            box.save()
         }
         store.start()
     }
@@ -44,5 +45,15 @@ struct MonitorApp: App {
 
 @MainActor
 final class PolicyBox {
-    var policy = NotificationPolicy()
+    private static let key = "notifiedSuspects"
+    var policy: NotificationPolicy
+
+    init() {
+        let saved = (UserDefaults.standard.data(forKey: Self.key)).flatMap { try? JSONDecoder().decode(Set<IgnoreKey>.self, from: $0) } ?? []
+        policy = NotificationPolicy(seen: saved)
+    }
+
+    func save() {
+        UserDefaults.standard.set(try? JSONEncoder().encode(policy.seen), forKey: Self.key)
+    }
 }

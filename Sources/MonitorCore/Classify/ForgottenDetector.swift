@@ -30,8 +30,9 @@ public struct Suspect: Sendable, Identifiable, Equatable {
 public enum ForgottenDetector {
     public static let idleAge: TimeInterval = 24 * 3600
     public static let idleCpuFraction = 0.005
+    public static let suspendedMinimum: TimeInterval = 30 * 60
 
-    public static func detect(_ rows: [ProcessRow], allPids: Set<Int32>, now: Date, ignore: IgnoreList) -> [Suspect] {
+    public static func detect(_ rows: [ProcessRow], allPids: Set<Int32>, now: Date, ignore: IgnoreList, stoppedSince: [Int32: Date] = [:]) -> [Suspect] {
         rows.compactMap { row -> Suspect? in
             guard !ignore.contains(.of(row)) else { return nil }
             let age = now.timeIntervalSince(row.snapshot.startTime)
@@ -42,7 +43,8 @@ public enum ForgottenDetector {
                 let lifetimeCpu = Double(row.snapshot.cpuTimeNs) / 1e9 / age
                 return lifetimeCpu < idleCpuFraction ? Suspect(row: row, reason: .idleDevServer(days: days)) : nil
             case .claudeSession:
-                return row.snapshot.state == .stopped ? Suspect(row: row, reason: .suspendedSession(days: days)) : nil
+                guard row.snapshot.state == .stopped, let since = stoppedSince[row.id], now.timeIntervalSince(since) >= suspendedMinimum else { return nil }
+                return Suspect(row: row, reason: .suspendedSession(days: max(1, Int(now.timeIntervalSince(since) / 86_400))))
             case .mcpServer:
                 let ppid = row.snapshot.ppid
                 return ppid == 1 || !allPids.contains(ppid) ? Suspect(row: row, reason: .orphanMcp) : nil

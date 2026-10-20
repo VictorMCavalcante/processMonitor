@@ -1,3 +1,4 @@
+import AppKit
 import MonitorCore
 import SwiftUI
 
@@ -152,11 +153,6 @@ struct MemoryBar: View {
 
 enum ProcessWindowModel {
     static func single(_ r: ProcessRow) -> ProcessGroup {
-        var row = r
-        if row.identified.kind == .appProcess {
-            row.identified.kind = .other
-            row.identified.appBundlePath = nil
-        }
-        return ProcessGroup(id: "pid:\(r.id)", title: r.snapshot.name, subtitle: nil, kind: row.identified.kind, rows: [row])
+        TerminationPlanner.singleRowGroup(r, isRunningApp: NSRunningApplication(processIdentifier: r.id) != nil)
     }
 }
