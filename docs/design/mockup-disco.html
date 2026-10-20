@@ -1,0 +1,55 @@
+<style>
+  .m{background:#16171B;color:#ECECF1;font:13px -apple-system,system-ui;border-radius:12px;padding:16px;border:1px solid #2E3037;max-width:760px}
+  .tabs{display:flex;gap:4px;margin-bottom:12px}.tabs span{padding:4px 10px;border-radius:6px;color:#8B8D98;font-size:12px}.tabs .on{background:#24262C;color:#ECECF1}
+  .grid{display:grid;grid-template-columns:repeat(4,1fr);gap:8px}
+  .tile{background:#1E1F24;border:1px solid #2E3037;border-radius:10px;padding:10px 12px;cursor:pointer}
+  .tile b{font-size:18px;display:block;margin:2px 0}.tile.sel{outline:2px solid #3DDC84}
+  .bar{display:flex;height:10px;border-radius:5px;overflow:hidden;margin:12px 0 4px}
+  .btn{background:#3DDC84;color:#0b0b0b;border-radius:7px;padding:4px 10px;font-weight:600;font-size:11px;display:inline-block;margin-top:6px}
+  .btn2{border:1px solid #2E3037;border-radius:6px;padding:3px 8px;font-size:11px;color:#ECECF1}
+  .sec{margin-top:14px}.sec h4{margin:0 0 6px;font-size:11px;text-transform:uppercase;letter-spacing:.05em;display:flex;justify-content:space-between}
+  .row{display:flex;align-items:center;gap:8px;padding:6px 8px;border-radius:6px;background:#1E1F24;margin-bottom:3px}
+  .row .n{flex:1}.row .s{color:#8B8D98;font-size:11px}.row .z{width:64px;text-align:right;font-variant-numeric:tabular-nums}
+  .cb{width:12px;height:12px;border:1px solid #5F616B;border-radius:3px}.cb.x{background:#3DDC84;border-color:#3DDC84}
+  .muted{color:#8B8D98;font-size:11px}
+  .foot{display:flex;justify-content:space-between;align-items:center;margin-top:12px;padding-top:10px;border-top:1px solid #2E3037}
+</style>
+
+<h2>Mescla: cards no topo e lista completa embaixo</h2>
+<p class="subtitle">Os cards dão o resumo e já têm o botão "Limpar o seguro". A lista fica sempre visível, separada por seção. Clicar num card leva até a seção dele. Embaixo aparece o total marcado, para limpar só o que você escolheu.</p>
+
+<div class="m">
+ <div class="tabs"><span>Por app</span><span>Portas</span><span>Picos</span><span class="on">Disco</span><span style="margin-left:auto" class="muted">analisado há 2 min · ↻</span></div>
+
+ <div class="grid">
+  <div class="tile"><span class="muted">Livre</span><b>73 GB</b><span class="muted">de 460 GB</span></div>
+  <div class="tile sel"><span class="muted">Seguro limpar</span><b style="color:#3DDC84">42 GB</b><span class="btn">Limpar o seguro…</span></div>
+  <div class="tile"><span class="muted">Sobras de apps</span><b style="color:#FFB340">1,5 GB</b><span class="muted">4 apps removidos</span></div>
+  <div class="tile"><span class="muted">Dados de apps</span><b style="color:#7C8CFF">105 GB</b><span class="muted">Steam, WhatsApp…</span></div>
+ </div>
+
+ <div class="bar"><div style="width:19%;background:#5F616B"></div><div style="width:11%;background:#3DDC84"></div><div style="width:0.6%;background:#FFB340"></div><div style="width:47%;background:#7C8CFF"></div><div style="width:22.4%;background:#2E3037"></div></div>
+ <div class="muted">Sistema · Seguro · Sobras · Dados de apps · Livre</div>
+
+ <div class="sec"><h4 style="color:#3DDC84"><span>Seguro: se recria sozinho</span><span class="muted">42 GB</span></h4>
+  <div class="row"><span class="cb x"></span><span class="n">node_modules · 14 projetos<div class="s">wra-ui sem mexer desde jun · projetoe2e-ui 1,5 GB</div></span><span class="z">10 GB</span><span class="btn2">Ver ▸</span></div>
+  <div class="row"><span class="cb x"></span><span class="n">Docker · imagens e build cache não usados</span><span class="z">≈15 GB</span></div>
+  <div class="row"><span class="cb x"></span><span class="n">uv cache</span><span class="z">5,3 GB</span></div>
+  <div class="row"><span class="cb x"></span><span class="n">Playwright browsers</span><span class="z">4,3 GB</span></div>
+  <div class="row"><span class="cb x"></span><span class="n">npm cache</span><span class="z">4,2 GB</span></div>
+  <div class="row"><span class="cb"></span><span class="n">Hugging Face models<div class="s">baixar de novo é lento: fica desmarcado</div></span><span class="z">3,3 GB</span></div>
+ </div>
+
+ <div class="sec"><h4 style="color:#FFB340"><span>Sobras de apps desinstalados</span><span class="muted">1,5 GB</span></h4>
+  <div class="row"><span class="cb"></span><span class="n">ChatGPT Atlas<div class="s">Application Support · Caches · Preferences</div></span><span class="z">857 MB</span><span class="btn2">Revelar</span></div>
+  <div class="row"><span class="cb"></span><span class="n">Adobe</span><span class="z">210 MB</span><span class="btn2">Revelar</span></div>
+  <div class="row"><span class="cb"></span><span class="n">Farming Simulator 2025</span><span class="z">199 MB</span><span class="btn2">Revelar</span></div>
+ </div>
+
+ <div class="sec"><h4 style="color:#7C8CFF"><span>Seus dados: só informativo</span><span class="muted">105 GB</span></h4>
+  <div class="row"><span class="n">Steam · jogos instalados</span><span class="z">75 GB</span><span class="btn2">Abrir app</span></div>
+  <div class="row"><span class="n">WhatsApp · mídia das conversas</span><span class="z">30 GB</span><span class="btn2">Abrir app</span></div>
+ </div>
+
+ <div class="foot"><span class="muted">5 itens marcados · <b style="color:#ECECF1">38,8 GB</b> · vai para a Lixeira</span><span class="btn" style="margin:0">Limpar marcados…</span></div>
+</div>
