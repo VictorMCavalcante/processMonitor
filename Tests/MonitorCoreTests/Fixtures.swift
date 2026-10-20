@@ -44,3 +44,17 @@ extension UserDefaults {
         UserDefaults(suiteName: "monitor-test-\(UUID().uuidString)")!
     }
 }
+
+extension ProcessGroup {
+    static func fixture(kind: ProcessKind, pids: [Int32] = [], in all: [ProcessSnapshot] = [], app: String? = nil) -> ProcessGroup {
+        if let app {
+            let row = ProcessRow.fixture(pid: 1, app: app)
+            return ProcessGroup(id: "app:\(app)", title: row.identified.title, subtitle: nil, kind: .appProcess, rows: [row])
+        }
+        let rows = pids.map { pid -> ProcessRow in
+            let snap = all.first { $0.id == pid } ?? ProcessSnapshot.fixture(pid: pid)
+            return ProcessRow(snapshot: snap, identified: Identified(kind: kind, title: snap.name), cpuPercent: 0, ports: [])
+        }
+        return ProcessGroup(id: "g", title: rows.first?.identified.title ?? "g", subtitle: nil, kind: kind, rows: rows)
+    }
+}
