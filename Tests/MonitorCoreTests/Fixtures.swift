@@ -58,3 +58,9 @@ extension ProcessGroup {
         return ProcessGroup(id: "g", title: rows.first?.identified.title ?? "g", subtitle: nil, kind: kind, rows: rows)
     }
 }
+
+extension Suspect {
+    static func fixture(pid: Int32, kind: ProcessKind, project: String?) -> Suspect {
+        Suspect(row: .fixture(pid: pid, kind: kind, ppid: 1, project: project), reason: .orphanMcp)
+    }
+}

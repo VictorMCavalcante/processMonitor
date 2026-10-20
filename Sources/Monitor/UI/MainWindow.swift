@@ -6,6 +6,7 @@ struct MainWindow: View {
     @State private var selection: Selection?
     @State private var expanded: Set<String> = []
     @State private var pending: (group: ProcessGroup, mode: TerminationMode)?
+    @State private var showPreferences = false
 
     var body: some View {
         VStack(spacing: 0) {
@@ -54,6 +55,11 @@ struct MainWindow: View {
             }
             .pickerStyle(.segmented)
             .frame(width: 260)
+            Button { showPreferences.toggle() } label: { Image(systemName: "gearshape") }
+                .buttonStyle(.plain)
+                .foregroundStyle(Theme.muted)
+                .help("Preferências")
+                .popover(isPresented: $showPreferences) { PreferencesView(store: store) }
         }
         .font(.system(size: 12))
         .padding(.horizontal, 14).padding(.vertical, 10)
