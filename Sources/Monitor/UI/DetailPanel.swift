@@ -7,6 +7,7 @@ struct DetailPanel: View {
     let group: ProcessGroup?
     let row: ProcessRow?
     let onClose: (ProcessGroup, TerminationMode) -> Void
+    let onRestart: (ProcessGroup) -> Void
 
     var body: some View {
         VStack(alignment: .leading, spacing: 0) {
@@ -42,6 +43,12 @@ struct DetailPanel: View {
                 Text(description(t.group, r)).foregroundStyle(Theme.muted).font(.system(size: 11.5)).lineLimit(2)
             }
         }
+        if let runaway = store.runaways.first(where: { r in t.group.rows.contains { $0.id == r.id } }) {
+            Text(runaway.hint).font(.system(size: 11.5)).foregroundStyle(Theme.bad)
+                .padding(9).frame(maxWidth: .infinity, alignment: .leading)
+                .background(RoundedRectangle(cornerRadius: 8).fill(Theme.bad.opacity(0.10)))
+                .padding(.top, 12)
+        }
         if let suspect {
             Text(suspect.hint).font(.system(size: 11.5)).foregroundStyle(Theme.warn)
                 .padding(9).frame(maxWidth: .infinity, alignment: .leading)
@@ -54,7 +61,7 @@ struct DetailPanel: View {
             if !r.ports.isEmpty { field("Porta", r.ports.map(String.init).joined(separator: ", ")) }
             field("Iniciado", started(t.group.oldestStart))
             field("Memória", Format.bytes(isSingle ? r.snapshot.footprintBytes : t.group.footprintBytes))
-            field("CPU", String(format: "%.1f%%", isSingle ? r.cpuPercent : t.group.cpuPercent).replacingOccurrences(of: ".", with: ","))
+            field("CPU", Format.cpu(isSingle ? r.cpuPercent : t.group.cpuPercent, cores: ProcessInfo.processInfo.activeProcessorCount) + " do Mac")
             if isSingle {
                 field("Pai", parent(r))
                 field("PID", String(r.id))
@@ -65,11 +72,35 @@ struct DetailPanel: View {
         }
         .font(.system(size: 12))
         .padding(.top, 12)
+        if r.identified.kind == .claudeSession {
+            let sessions = (isSingle ? [r] : t.group.rows).filter { $0.identified.kind == .claudeSession }
+            VStack(alignment: .leading, spacing: 5) {
+                ForEach(sessions) { session in
+                    let cost = store.sessionCost(session.snapshot)
+                    Text("Custo total da sessão\(sessions.count > 1 ? " " + (session.identified.project ?? String(session.id)) : ""): \(Format.bytes(cost.totalBytes))")
+                        .fontWeight(.semibold)
+                    ForEach(Array(cost.parts.enumerated()), id: \.offset) { _, part in
+                        HStack {
+                            Text(part.title).foregroundStyle(Theme.muted)
+                            Spacer()
+                            Text(Format.bytes(part.bytes)).foregroundStyle(Theme.muted)
+                        }
+                    }
+                }
+            }
+            .font(.system(size: 11.5))
+            .padding(9)
+            .background(RoundedRectangle(cornerRadius: 8).fill(Theme.accent.opacity(0.08)))
+            .padding(.top, 12)
+        }
         let plan = store.plan(for: t.group, mode: .normal)
         let blocked: String? = if case .notAllowed(let reason) = plan { reason } else { nil }
         HStack(spacing: 8) {
             Button("Fechar") { onClose(t.group, .normal) }.buttonStyle(PillButton(color: Theme.bad)).disabled(blocked != nil)
             Button("Forçar") { onClose(t.group, .force) }.buttonStyle(PillButton()).disabled(blocked != nil)
+            if case .quitApp = plan {
+                Button("Reiniciar") { onRestart(t.group) }.buttonStyle(PillButton())
+            }
             Button("Abrir pasta") { if let cwd = r.snapshot.cwd { NSWorkspace.shared.open(URL(fileURLWithPath: cwd)) } }
                 .buttonStyle(PillButton()).disabled(r.snapshot.cwd == nil)
         }

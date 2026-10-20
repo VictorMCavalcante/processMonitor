@@ -9,6 +9,11 @@ public enum Format {
         return "\(Int((Double(b) / 1_048_576).rounded())) MB"
     }
 
+    public static func cpu(_ perCore: Double, cores: Int) -> String {
+        let share = perCore / Double(max(cores, 1))
+        return String(format: "%.1f%%", share).replacingOccurrences(of: ".", with: ",")
+    }
+
     public static func age(since start: Date, now: Date) -> String {
         let seconds = max(0, now.timeIntervalSince(start))
         if seconds < 3600 { return "\(Int(seconds / 60)) min" }

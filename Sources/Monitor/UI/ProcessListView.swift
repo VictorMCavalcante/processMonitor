@@ -44,6 +44,7 @@ struct ProcessListView: View {
 
     private func groupRow(_ g: ProcessGroup, maxBytes: UInt64, suspectIds: Set<Int32>) -> some View {
         let isSuspect = g.rows.contains { suspectIds.contains($0.id) }
+        let isRunaway = g.rows.contains { r in store.runaways.contains { $0.id == r.id } }
         let ignored = g.rows.allSatisfy { store.ignore.contains(.of($0)) }
         let stopped = g.rows.contains { $0.snapshot.state == .stopped }
         let selected = selection == .group(g.id)
@@ -57,10 +58,11 @@ struct ProcessListView: View {
                 if let s = g.subtitle { Text(s).foregroundStyle(Theme.muted).font(.system(size: 11)).lineLimit(1) }
                 if stopped && g.kind == .claudeSession { Tag(text: g.rows.filter { $0.snapshot.state == .stopped }.count == 1 ? "1 suspensa" : "suspensas", color: Theme.bad) }
                 else if isSuspect { Tag(text: "esquecido", color: Theme.warn) }
+                if isRunaway { Tag(text: "descontrolado", color: Theme.bad) }
                 if ignored { Tag(text: "ignorado", color: Theme.accent) }
             }),
             memory: AnyView(MemoryBar(bytes: g.footprintBytes, fraction: Double(g.footprintBytes) / Double(maxBytes), color: isSuspect ? Theme.warn : ignored ? Theme.muted2 : Theme.accent)),
-            cpu: AnyView(Text(String(format: "%.1f%%", g.cpuPercent).replacingOccurrences(of: ".", with: ","))),
+            cpu: AnyView(Text(Format.cpu(g.cpuPercent, cores: ProcessInfo.processInfo.activeProcessorCount)).help(String(format: "%.1f%% de um núcleo", g.cpuPercent))),
             age: AnyView(Text(Format.age(since: g.oldestStart, now: store.now))),
             action: AnyView(closeButton(g))
         )
@@ -84,7 +86,7 @@ struct ProcessListView: View {
                 if r.snapshot.state == .stopped { Tag(text: "suspenso", color: Theme.bad) }
             }.padding(.leading, 18)),
             memory: AnyView(Text(Format.bytes(r.snapshot.footprintBytes))),
-            cpu: AnyView(Text(String(format: "%.1f%%", r.cpuPercent).replacingOccurrences(of: ".", with: ","))),
+            cpu: AnyView(Text(Format.cpu(r.cpuPercent, cores: ProcessInfo.processInfo.activeProcessorCount)).help(String(format: "%.1f%% de um núcleo", r.cpuPercent))),
             age: AnyView(Text(Format.age(since: r.snapshot.startTime, now: store.now))),
             action: AnyView(closeButton(ProcessWindowModel.single(r)))
         )

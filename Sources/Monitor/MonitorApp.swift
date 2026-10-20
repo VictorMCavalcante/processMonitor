@@ -34,7 +34,7 @@ struct MonitorApp: App {
         let box = policy
         store.onCycle = { store in
             guard let level = store.stats?.level else { return }
-            for alert in box.policy.evaluate(level: level, suspects: store.suspects, now: store.now) {
+            for alert in box.policy.evaluate(level: level, suspects: store.suspects, runaways: store.runaways, now: store.now) {
                 Notifier.post(alert)
             }
             box.save()

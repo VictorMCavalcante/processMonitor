@@ -101,13 +101,17 @@ public enum TerminationPlanner {
         return ProcessGroup(id: "pid:\(row.id)", title: isRunningApp ? row.identified.title : row.snapshot.name, subtitle: nil, kind: r.identified.kind, rows: [r])
     }
 
+    public static func restartNeedsConfirmation(_ group: ProcessGroup) -> Bool {
+        group.rows.first?.identified.appBundlePath == Classifier.dockerAppPath
+    }
+
     public static func needsConfirmation(_ group: ProcessGroup, all: [ProcessSnapshot], myUid: UInt32) -> Bool {
         switch group.kind {
         case .claudeSession where group.rows.contains(where: { $0.snapshot.state != .stopped }): return true
         case .shell: return true
         case .appProcess:
             let path = group.rows.first?.identified.appBundlePath ?? ""
-            return path.hasPrefix("/System/") || terminalApps.contains(group.rows.first?.identified.title ?? "")
+            return path.hasPrefix("/System/") || path == Classifier.dockerAppPath || terminalApps.contains(group.rows.first?.identified.title ?? "")
         default: break
         }
         if case .signals(let steps) = plan(group, all: all, mode: .normal, myUid: myUid) { return steps.count > 5 }

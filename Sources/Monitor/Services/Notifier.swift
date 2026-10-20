@@ -22,6 +22,9 @@ enum Notifier {
         case .newSuspect(_, let title):
             content.title = "Processo esquecido: \(title)"
             content.body = "Parece aberto e sem uso. Você decide se fecha."
+        case .runaway(_, let title, let hint):
+            content.title = "Processo descontrolado: \(title)"
+            content.body = hint
         }
         UNUserNotificationCenter.current().add(UNNotificationRequest(identifier: UUID().uuidString, content: content, trigger: nil))
     }

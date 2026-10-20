@@ -27,7 +27,24 @@ public struct Identified: Sendable, Equatable {
     }
 }
 
+public struct ClassifyContext: Sendable, Equatable {
+    public var dockerRunning: Bool
+
+    public init(dockerRunning: Bool) {
+        self.dockerRunning = dockerRunning
+    }
+
+    public static let empty = ClassifyContext(dockerRunning: false)
+}
+
 public enum Classifier {
+    public static let dockerAppPath = "/Applications/Docker.app"
+    private static let virtualMachineMarker = "com.apple.Virtualization.VirtualMachine"
+
+    public static func dockerRunning(in snaps: [ProcessSnapshot]) -> Bool {
+        snaps.contains { $0.executablePath?.hasPrefix(dockerAppPath + "/") == true }
+    }
+
     private static let devServers: [(match: @Sendable (String) -> Bool, title: String)] = [
         ({ $0.contains("next-server") || $0.contains("next dev") || $0.contains("/next/dist/bin/next") }, "Next.js dev"),
         ({ $0.contains("/vite") || $0.hasPrefix("vite") }, "Vite dev"),
@@ -47,19 +64,47 @@ public enum Classifier {
 
     private static let shells: Set<String> = ["zsh", "bash", "fish", "sh"]
     private static let systemPrefixes = ["/System/Library/", "/usr/libexec/", "/usr/sbin/", "/sbin/"]
+    private static let friendlySystem: [String: String] = [
+        "ControlCenter": "Central de Controle",
+        "rapportd": "Continuidade (Handoff e AirDrop)",
+        "sharingd": "Compartilhamento (AirDrop)",
+        "WindowServer": "Servidor de janelas",
+        "mds": "Spotlight (indexação)",
+        "mds_stores": "Spotlight (indexação)",
+        "mdworker_shared": "Spotlight (indexação)",
+        "coreaudiod": "Áudio do sistema",
+        "bluetoothd": "Bluetooth",
+    ]
+    private static let interpreters: [String: String] = [
+        "python": "Python", "python3": "Python", "node": "node", "bun": "bun", "deno": "deno", "ruby": "Ruby", "perl": "Perl", "php": "PHP",
+    ]
+    private static let scriptExtensions: Set<String> = ["py", "js", "mjs", "cjs", "ts", "rb", "pl", "php"]
 
-    public static func classify(_ p: ProcessSnapshot, ports: [UInt16]) -> Identified {
+    public static func classify(_ p: ProcessSnapshot, ports: [UInt16], context: ClassifyContext = .empty) -> Identified {
         let command = p.arguments.joined(separator: " ")
         let exeName = (p.executablePath.map { ($0 as NSString).lastPathComponent }) ?? ""
         let argv0 = p.arguments.first.map { ($0 as NSString).lastPathComponent } ?? ""
         let project = projectName(from: p.cwd)
         let portText = ports.isEmpty ? nil : ports.map { ":\($0)" }.joined(separator: " ")
 
-        if let path = p.executablePath, systemPrefixes.contains(where: { path.hasPrefix($0) }) {
-            let title = outerAppBundle(path).map { (($0 as NSString).lastPathComponent as NSString).deletingPathExtension } ?? p.name
-            return Identified(kind: .system, title: title, subtitle: command.isEmpty ? nil : command, project: nil)
+        if let path = p.executablePath, path.contains(virtualMachineMarker) {
+            return context.dockerRunning
+                ? Identified(kind: .appProcess, title: "Docker Desktop", subtitle: "máquina virtual", appBundlePath: dockerAppPath)
+                : Identified(kind: .system, title: "Máquina virtual")
         }
-        if let app = outerAppBundle(p.executablePath) {
+        if let path = p.executablePath, systemPrefixes.contains(where: { path.hasPrefix($0) }) {
+            let raw = outerAppBundle(path).map { (($0 as NSString).lastPathComponent as NSString).deletingPathExtension } ?? p.name
+            if let friendly = friendlySystem[raw] ?? friendlySystem[(path as NSString).lastPathComponent] {
+                let airplay = raw == "ControlCenter" && (ports.contains(5000) || ports.contains(7000))
+                return Identified(kind: .system, title: friendly, subtitle: airplay ? "Receptor AirPlay" : raw, project: nil)
+            }
+            return Identified(kind: .system, title: raw, subtitle: command.isEmpty ? nil : command, project: nil)
+        }
+        if let path = p.executablePath, let range = path.range(of: ".AppBundle/") {
+            let name = ((path[..<range.lowerBound]) as Substring).split(separator: "/").last.map(String.init) ?? p.name
+            return Identified(kind: .other, title: name, subtitle: [p.name, portText].compactMap { $0 }.joined(separator: " · "), project: nil)
+        }
+        if let app = outerAppBundle(p.executablePath), !app.hasSuffix("/Python.app") {
             let title = ((app as NSString).lastPathComponent as NSString).deletingPathExtension
             return Identified(kind: .appProcess, title: title, subtitle: p.name == title ? nil : p.name, project: nil, appBundlePath: app)
         }
@@ -84,6 +129,11 @@ public enum Classifier {
         }
         if p.uid == 0 {
             return Identified(kind: .system, title: p.name, subtitle: command.isEmpty ? nil : command, project: nil)
+        }
+        if let interpreter = interpreters[argv0.lowercased()] ?? interpreters[p.name.lowercased()],
+           let script = p.arguments.dropFirst().first(where: { !$0.hasPrefix("-") && scriptExtensions.contains(($0 as NSString).pathExtension.lowercased()) }) {
+            let subtitle = [interpreter, project, portText].compactMap { $0 }.joined(separator: " · ")
+            return Identified(kind: .other, title: (script as NSString).lastPathComponent, subtitle: subtitle, project: project)
         }
         return Identified(kind: .other, title: p.name, subtitle: [project, portText].compactMap { $0 }.joined(separator: " · ").nilIfEmpty, project: project)
     }
@@ -144,6 +194,6 @@ public final class ProjectResolver: @unchecked Sendable {
             }
             url.deleteLastPathComponent()
         }
-        return nearest?.lastPathComponent ?? (cwd == home ? nil : URL(fileURLWithPath: cwd).lastPathComponent)
+        return nearest?.lastPathComponent
     }
 }
