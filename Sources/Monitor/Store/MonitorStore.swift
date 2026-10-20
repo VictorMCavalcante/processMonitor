@@ -33,6 +33,7 @@ final class MonitorStore {
     @ObservationIgnored private var lastPrune = Date.distantPast
     @ObservationIgnored private var lastContainerScan = Date.distantPast
     @ObservationIgnored private let docker = DockerClient()
+    @ObservationIgnored private var containerScanInFlight = false
     @ObservationIgnored private var ports: [Int32: [UInt16]] = [:]
     @ObservationIgnored private var lastPortScan = Date.distantPast
     @ObservationIgnored private var loop: Task<Void, Never>?
@@ -82,8 +83,10 @@ final class MonitorStore {
         SessionCost.compute(session: snap, rows: rows)
     }
 
-    func releasePort(_ port: UInt16) -> PortRelease {
-        PortTable.release(port: port, entries: PortTable.build(sockets: sockets, rows: rows, containers: containers), all: allSnapshots, myUid: getuid())
+    func releasePort(_ port: UInt16) async -> PortRelease {
+        lastPortScan = .distantPast
+        await refresh()
+        return PortTable.release(port: port, entries: PortTable.build(sockets: sockets, rows: rows, containers: containers), all: allSnapshots, myUid: getuid())
     }
 
     func stopContainer(_ id: String) async -> String? {
@@ -166,10 +169,16 @@ final class MonitorStore {
             lastPrune = at
         }
         peaks = peakRecorder.episodes
-        if windowVisible && dockerRunning && at.timeIntervalSince(lastContainerScan) >= 15 {
-            let client = docker
-            containers = await Task.detached(priority: .utility) { client.list() }.value
+        if windowVisible && dockerRunning && !containerScanInFlight && at.timeIntervalSince(lastContainerScan) >= 15 {
+            containerScanInFlight = true
             lastContainerScan = at
+            let client = docker
+            Task { [weak self] in
+                let list = await Task.detached(priority: .utility) { client.list() }.value
+                guard let self else { return }
+                self.containers = self.dockerRunning ? list : []
+                self.containerScanInFlight = false
+            }
         } else if !dockerRunning {
             containers = []
         }

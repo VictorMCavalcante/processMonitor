@@ -14,16 +14,18 @@ public struct NotificationPolicy: Sendable {
 
     public init() {}
 
-    private var seenRunaways: Set<IgnoreKey> = []
+    public static let runawayCooldown: TimeInterval = 3600
+    private var runawayNotifiedAt: [IgnoreKey: Date] = [:]
     private static let runawayPrefix = "runaway:"
 
     public init(seen: Set<IgnoreKey>) {
         seenSuspects = Set(seen.filter { !$0.raw.hasPrefix(Self.runawayPrefix) })
-        seenRunaways = Set(seen.filter { $0.raw.hasPrefix(Self.runawayPrefix) }.map { IgnoreKey(raw: String($0.raw.dropFirst(Self.runawayPrefix.count))) })
+        let restored = seen.filter { $0.raw.hasPrefix(Self.runawayPrefix) }.map { IgnoreKey(raw: String($0.raw.dropFirst(Self.runawayPrefix.count))) }
+        runawayNotifiedAt = Dictionary(restored.map { ($0, Date()) }, uniquingKeysWith: { a, _ in a })
     }
 
     public var seen: Set<IgnoreKey> {
-        seenSuspects.union(seenRunaways.map { IgnoreKey(raw: Self.runawayPrefix + $0.raw) })
+        seenSuspects.union(runawayNotifiedAt.keys.map { IgnoreKey(raw: Self.runawayPrefix + $0.raw) })
     }
 
     public mutating func evaluate(level: PressureLevel, suspects: [Suspect], runaways: [Runaway] = [], now: Date) -> [AlertKind] {
@@ -43,14 +45,14 @@ public struct NotificationPolicy: Sendable {
             }
         }
         seenSuspects = current
-        let currentRunaways = Set(runaways.map { IgnoreKey.of($0.row) })
+        runawayNotifiedAt = runawayNotifiedAt.filter { now.timeIntervalSince($0.value) < Self.runawayCooldown }
         for r in runaways {
             let key = IgnoreKey.of(r.row)
-            if !seenRunaways.contains(key) {
+            if runawayNotifiedAt[key] == nil {
+                runawayNotifiedAt[key] = now
                 alerts.append(.runaway(key, title: [r.row.identified.title, r.row.identified.project].compactMap { $0 }.joined(separator: " · "), hint: r.hint))
             }
         }
-        seenRunaways = currentRunaways
         return alerts
     }
 }

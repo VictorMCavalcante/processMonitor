@@ -34,9 +34,11 @@ public struct DockerClient: Sendable {
     }
 
     public func list() -> [DockerContainer] {
+        let deadline = Date().addingTimeInterval(timeout)
         guard let ps = command(["ps", "--format", "{{json .}}"]) else { return [] }
         var containers = Self.parsePs(ps)
-        guard !containers.isEmpty, let stats = command(["stats", "--no-stream", "--format", "{{json .}}"]) else { return containers }
+        let remaining = deadline.timeIntervalSinceNow
+        guard !containers.isEmpty, remaining > 0.2, let stats = command(["stats", "--no-stream", "--format", "{{json .}}"], timeout: remaining) else { return containers }
         let usage = Self.parseStats(stats)
         for i in containers.indices {
             if let u = usage.first(where: { containers[i].id.hasPrefix($0.key) || $0.key.hasPrefix(containers[i].id) })?.value {
@@ -62,8 +64,8 @@ public struct DockerClient: Sendable {
         paths.first { FileManager.default.isExecutableFile(atPath: $0) }
     }
 
-    private func command(_ args: [String]) -> String? {
-        guard let path = executable, let result = runner.run(path, args, timeout: timeout), result.status == 0 else { return nil }
+    private func command(_ args: [String], timeout: TimeInterval? = nil) -> String? {
+        guard let path = executable, let result = runner.run(path, args, timeout: timeout ?? self.timeout), result.status == 0 else { return nil }
         return result.output
     }
 
@@ -99,11 +101,16 @@ public struct DockerClient: Sendable {
     }
 
     static func publishedPorts(_ s: String) -> [UInt16] {
-        let ports = s.split(separator: ",").compactMap { part -> UInt16? in
-            guard let arrow = part.range(of: "->") else { return nil }
+        let ports = s.split(separator: ",").flatMap { part -> [UInt16] in
+            guard let arrow = part.range(of: "->") else { return [] }
             let host = part[..<arrow.lowerBound]
-            guard let colon = host.lastIndex(of: ":") else { return nil }
-            return UInt16(host[host.index(after: colon)...])
+            guard let colon = host.lastIndex(of: ":") else { return [] }
+            let spec = host[host.index(after: colon)...]
+            let bounds = spec.split(separator: "-").compactMap { UInt16($0) }
+            guard let low = bounds.first else { return [] }
+            let high = bounds.count > 1 ? bounds[1] : low
+            guard high >= low, high - low <= 256 else { return [low] }
+            return Array(low...high)
         }
         return Array(Set(ports)).sorted()
     }

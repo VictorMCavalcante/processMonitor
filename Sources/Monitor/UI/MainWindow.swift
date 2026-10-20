@@ -11,11 +11,13 @@ enum WindowTab: Hashable {
 enum PendingAction {
     case close(ProcessGroup, TerminationMode, dockerContainers: Int?)
     case stopContainer(id: String, name: String)
+    case restart(ProcessGroup, dockerContainers: Int)
 
     var title: String {
         switch self {
         case .close(let g, _, _): "Fechar \(g.title)?"
         case .stopContainer(_, let name): "Parar o container \(name)?"
+        case .restart(let g, _): "Reiniciar \(g.title)?"
         }
     }
 }
@@ -42,7 +44,11 @@ struct MainWindow: View {
                 .padding(14)
                 if case .processes = tab {
                     DetailPanel(store: store, group: selectedGroup, row: selectedRow, onClose: { request($0, $1) }, onRestart: { g in
-                        Task { _ = await store.restart(g) }
+                        if TerminationPlanner.restartNeedsConfirmation(g) {
+                            Task { pending = .restart(g, dockerContainers: await store.dockerRunningCount()) }
+                        } else {
+                            Task { _ = await store.restart(g) }
+                        }
                     })
                 }
             }
@@ -128,6 +134,7 @@ struct MainWindow: View {
         switch pending {
         case .close(_, let mode, _): mode == .force ? "Forçar" : "Fechar"
         case .stopContainer: "Parar"
+        case .restart: "Reiniciar"
         case nil: "OK"
         }
     }
@@ -138,17 +145,25 @@ struct MainWindow: View {
             Task { _ = await store.close(g, mode: mode) }
         case .stopContainer(let id, _):
             Task { _ = await store.stopContainer(id) }
+        case .restart(let g, _):
+            Task { _ = await store.restart(g) }
         }
     }
 
     private func releasePort(_ port: UInt16) {
-        switch store.releasePort(port) {
+        Task { await handleRelease(port, await store.releasePort(port)) }
+    }
+
+    private func handleRelease(_ port: UInt16, _ release: PortRelease) async {
+        switch release {
         case .free:
             store.lastMessage = "Porta \(port) livre."
         case .blocked(let reason):
             store.lastMessage = reason
         case .stopContainer(let id, let name):
             pending = .stopContainer(id: id, name: name)
+        case .close(let group) where release.requiresConfirmation(all: store.allSnapshots, myUid: getuid()):
+            pending = .close(group, .normal, dockerContainers: nil)
         case .close(let group):
             request(group, .normal) {
                 if store.sockets.contains(where: { $0.port == port }) { store.lastMessage = "A porta \(port) ainda está em uso." }
@@ -178,10 +193,12 @@ struct MainWindow: View {
         switch action {
         case .stopContainer(_, let name):
             return "O container \(name) será parado. Os outros containers continuam rodando."
+        case .restart(_, let containers):
+            return "O Docker será fechado e reaberto. Isso vai parar todos os containers (\(containers) em execução)."
         case .close(let group, let mode, let containers):
             if let containers { return "Isso vai parar todos os containers (\(containers) em execução)." }
             switch store.plan(for: group, mode: mode) {
-            case .quitApp(_, let force): return force ? "O app será encerrado à força. Trabalho não salvo pode ser perdido." : "O app será fechado normalmente."
+            case .quitApp(_, let force): return force ? "O app \(group.title) será encerrado à força. Trabalho não salvo pode ser perdido." : "O app \(group.title) inteiro será fechado normalmente."
             case .signals(let steps): return "Serão encerrados \(steps.count) processo\(steps.count == 1 ? "" : "s"): " + steps.prefix(6).compactMap { s in store.allSnapshots.first { $0.id == s.pid }?.name }.joined(separator: ", ")
             case .notAllowed(let reason): return reason
             }

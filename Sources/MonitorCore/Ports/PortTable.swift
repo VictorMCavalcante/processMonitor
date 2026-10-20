@@ -22,6 +22,16 @@ public enum PortRelease: Sendable, Equatable {
     case blocked(String)
 }
 
+extension PortRelease {
+    public func requiresConfirmation(all: [ProcessSnapshot], myUid: UInt32) -> Bool {
+        switch self {
+        case .close(let g): g.kind == .appProcess || TerminationPlanner.needsConfirmation(g, all: all, myUid: myUid)
+        case .stopContainer: true
+        case .free, .blocked: false
+        }
+    }
+}
+
 public enum PortTable {
     public static func build(sockets: [ListeningSocket], rows: [ProcessRow], containers: [DockerContainer]) -> [PortEntry] {
         let byPid = Dictionary(rows.map { ($0.id, $0) }, uniquingKeysWith: { a, _ in a })
@@ -51,6 +61,12 @@ public enum PortTable {
         case .container(let c):
             return .stopContainer(id: c.id, name: c.name)
         case .process(let row):
+            if row.identified.appBundlePath == Classifier.dockerAppPath {
+                return .blocked("Porta do Docker sem container identificado. Pare o container na aba Docker.")
+            }
+            guard all.contains(where: { $0.id == row.id && abs($0.startTime.timeIntervalSince(row.snapshot.startTime)) < 0.001 }) else {
+                return .blocked(TerminationPlanner.alreadyGone)
+            }
             let group = ProcessGroup(id: "port:\(port)", title: row.identified.title, subtitle: nil, kind: row.identified.kind, rows: [row])
             if case .notAllowed(let reason) = TerminationPlanner.plan(group, all: all, mode: .normal, myUid: myUid) {
                 return .blocked(reason)

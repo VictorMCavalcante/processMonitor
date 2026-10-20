@@ -46,7 +46,8 @@ public struct RunawayTracker: Sendable {
         var next: [String: State] = [:]
         var found: [Runaway] = []
         for row in rows {
-            guard row.snapshot.uid == myUid, row.identified.kind != .system, !ignore.contains(.of(row)) else { continue }
+            guard row.snapshot.uid == myUid, row.identified.kind != .system, !ignore.contains(.of(row)),
+                  row.snapshot.executablePath?.contains("com.apple.Virtualization.VirtualMachine") != true else { continue }
             let key = "\(row.id):\(row.snapshot.startTime.timeIntervalSince1970)"
             let bytes = row.snapshot.footprintBytes
             var state = states[key] ?? State(cpuSince: nil, memoryStart: (now, bytes), memoryLast: bytes)

@@ -73,7 +73,7 @@ struct DetailPanel: View {
         .font(.system(size: 12))
         .padding(.top, 12)
         if r.identified.kind == .claudeSession {
-            let sessions = isSingle ? [r] : t.group.rows
+            let sessions = (isSingle ? [r] : t.group.rows).filter { $0.identified.kind == .claudeSession }
             VStack(alignment: .leading, spacing: 5) {
                 ForEach(sessions) { session in
                     let cost = store.sessionCost(session.snapshot)
