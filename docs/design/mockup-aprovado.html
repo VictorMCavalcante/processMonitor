@@ -1,0 +1,131 @@
+<style>
+  .dk { --bg:#16171b; --panel:#1e1f24; --panel2:#24262c; --line:#2e3037; --txt:#ececf1; --mut:#8b8d98; --mut2:#5f616b; --acc:#7c8cff; --ok:#3ddc84; --warn:#ffb340; --bad:#ff5c5c;
+        font-family:-apple-system,"SF Pro Text",system-ui,sans-serif; font-size:12px; color:var(--txt); background:radial-gradient(1200px 500px at 20% -10%,#26284a 0%,#0f1013 60%); padding:22px; border-radius:14px; }
+  .dk h2 { color:#fff } .dk .subtitle { color:#9a9ca8 }
+  .win { background:var(--bg); border:1px solid #2a2b31; border-radius:12px; overflow:hidden; box-shadow:0 30px 60px rgba(0,0,0,.45), inset 0 1px 0 rgba(255,255,255,.04); }
+  .tb { display:flex; align-items:center; gap:10px; padding:10px 14px; background:linear-gradient(#202127,#1b1c21); border-bottom:1px solid var(--line); }
+  .tl { display:flex; gap:7px } .tl i { width:11px; height:11px; border-radius:50%; display:block }
+  .search { flex:1; background:#14151a; border:1px solid var(--line); border-radius:7px; padding:5px 10px; color:var(--mut); }
+  .seg { display:flex; background:#14151a; border:1px solid var(--line); border-radius:7px; overflow:hidden }
+  .seg span { padding:4px 10px; color:var(--mut) } .seg span.on { background:#2b2d35; color:var(--txt) }
+  .stats { display:grid; grid-template-columns:repeat(4,1fr); gap:10px; padding:12px 14px; border-bottom:1px solid var(--line) }
+  .stat { background:var(--panel); border:1px solid var(--line); border-radius:10px; padding:10px 12px }
+  .stat .k { color:var(--mut); font-size:11px } .stat .v { font-size:18px; font-weight:600; margin-top:2px; letter-spacing:-.2px }
+  .spark { height:22px; margin-top:6px }
+  .alert { margin:12px 14px 0; border-radius:10px; padding:10px 12px; background:linear-gradient(90deg,rgba(255,179,64,.14),rgba(255,179,64,.04)); border:1px solid rgba(255,179,64,.35) }
+  .alert b { color:var(--warn) }
+  .chip { display:inline-flex; align-items:center; gap:6px; background:rgba(255,255,255,.04); border:1px solid var(--line); border-radius:20px; padding:3px 10px; margin:6px 6px 0 0; color:var(--txt) }
+  .chip input { accent-color:var(--warn) }
+  .btn { display:inline-block; padding:5px 11px; border-radius:7px; font-weight:600; font-size:11.5px; cursor:pointer }
+  .btn.red { background:var(--bad); color:#1a0b0b } .btn.ghost { background:#2b2d35; color:var(--txt); border:1px solid var(--line) }
+  .tbl { margin:12px 14px 14px; background:var(--panel); border:1px solid var(--line); border-radius:10px; overflow:hidden }
+  .r { display:grid; grid-template-columns:22px 1fr 96px 60px 70px 24px; gap:10px; align-items:center; padding:8px 12px; border-top:1px solid var(--line) }
+  .r.h { border-top:0; color:var(--mut2); font-size:10.5px; text-transform:uppercase; letter-spacing:.5px; background:var(--panel2) }
+  .r.c { padding-left:40px; background:#1b1c21 } .r.sel { background:rgba(124,140,255,.10); box-shadow:inset 2px 0 0 var(--acc) }
+  .ico { width:20px; height:20px; border-radius:5px; display:grid; place-items:center; font-size:11px; font-weight:700 }
+  .nm b { font-weight:600 } .nm .s { color:var(--mut); font-size:11px; margin-left:6px }
+  .bar { height:5px; border-radius:3px; background:#2b2d35; overflow:hidden; margin-top:4px } .bar i { display:block; height:100% }
+  .tag { font-size:10px; padding:1px 7px; border-radius:10px; margin-left:6px; font-weight:600 }
+  .t-w { background:rgba(255,179,64,.16); color:var(--warn) } .t-b { background:rgba(255,92,92,.16); color:var(--bad) } .t-a { background:rgba(124,140,255,.16); color:var(--acc) }
+  .x { color:var(--mut2); text-align:center } .x:hover { color:var(--bad) }
+  .side { width:260px; background:var(--panel); border-left:1px solid var(--line); padding:14px }
+  .kv { display:grid; grid-template-columns:78px 1fr; gap:7px 10px; margin-top:12px } .kv b { color:var(--mut); font-weight:500 }
+  .pop { width:310px; background:rgba(30,31,36,.92); backdrop-filter:blur(20px); border:1px solid #33353d; border-radius:12px; box-shadow:0 24px 50px rgba(0,0,0,.5); overflow:hidden }
+  .ring { width:64px; height:64px; border-radius:50%; background:conic-gradient(var(--warn) 0 72%, #2b2d35 72% 100%); display:grid; place-items:center }
+  .ring div { width:50px; height:50px; border-radius:50%; background:#1e1f24; display:grid; place-items:center; font-weight:700; font-size:13px }
+  .li { display:flex; justify-content:space-between; padding:5px 0 } .li span:last-child { color:var(--mut) }
+  .menubar { background:#0d0d10; border-radius:8px 8px 0 0; padding:5px 12px; display:flex; justify-content:flex-end; gap:14px; color:#cfd0d6; font-size:12px; border:1px solid #2a2b31; border-bottom:0; width:310px; box-sizing:border-box }
+  .mb-ico { display:inline-flex; align-items:center; gap:5px } .mb-ico i { width:9px; height:9px; border-radius:50%; background:var(--warn); box-shadow:0 0 8px var(--warn) }
+</style>
+
+<div class="dk">
+<h2>Versão escura e mais caprichada</h2>
+<p class="subtitle">Ícone da barra + popover, e a janela juntando o melhor das duas opções: esquecidos no topo, lista agrupada e painel de detalhes.</p>
+
+<div style="display:flex;gap:28px;align-items:flex-start;flex-wrap:wrap;margin:14px 0 26px">
+  <div>
+    <div class="menubar"><span>🔋</span><span>Wi-Fi</span><span class="mb-ico"><i></i>72%</span><span>seg 15:50</span></div>
+    <div class="pop">
+      <div style="display:flex;gap:14px;align-items:center;padding:14px">
+        <div class="ring"><div>72%</div></div>
+        <div>
+          <div style="font-weight:600;font-size:13px">Pressão moderada</div>
+          <div style="color:var(--mut);margin-top:3px">13,1 de 16 GB · swap 2,1 GB</div>
+          <div style="color:var(--mut)">CPU 34%</div>
+        </div>
+      </div>
+      <div style="margin:0 12px 10px;padding:10px;border-radius:9px;background:rgba(255,179,64,.10);border:1px solid rgba(255,179,64,.3)">
+        <div style="color:var(--warn);font-weight:600">4 esquecidos · 6,1 GB</div>
+        <div class="li"><span>Next dev · eleva-contracts-ui</span><span>4 d · 2,5 GB</span></div>
+        <div class="li"><span>Vite · systemwra :5199</span><span>5 d · 1,5 GB</span></div>
+        <div class="li"><span>Claude Code suspenso</span><span>19 d</span></div>
+        <div class="li"><span>Playwright órfão</span><span>7 d</span></div>
+      </div>
+      <div style="padding:0 14px 12px">
+        <div style="color:var(--mut2);font-size:10.5px;text-transform:uppercase;letter-spacing:.5px;margin-bottom:4px">Maiores consumidores</div>
+        <div class="li"><span>Microsoft Teams</span><span>2,1 GB</span></div>
+        <div class="li"><span>Arc</span><span>1,8 GB</span></div>
+        <div class="li"><span>Claude Code · 4 sessões</span><span>1,4 GB</span></div>
+        <div style="text-align:center;color:var(--acc);margin-top:10px;font-weight:600">Abrir janela detalhada ⌘D</div>
+      </div>
+    </div>
+  </div>
+  <p class="subtitle" style="max-width:300px">Na barra, uma bolinha colorida com a % de pressão (verde/âmbar/vermelho). O popover tem fundo translúcido, como os menus nativos do macOS.</p>
+</div>
+
+<div class="win">
+  <div class="tb">
+    <div class="tl"><i style="background:#ff5f57"></i><i style="background:#febc2e"></i><i style="background:#28c840"></i></div>
+    <div class="search">⌕  Buscar processo, projeto, porta…</div>
+    <div class="seg"><span class="on">Por app</span><span>Por projeto</span><span>Lista</span></div>
+  </div>
+  <div style="display:flex">
+    <div style="flex:1;min-width:0">
+      <div class="stats">
+        <div class="stat"><div class="k">Pressão de memória</div><div class="v" style="color:var(--warn)">72%</div>
+          <svg class="spark" viewBox="0 0 100 22" preserveAspectRatio="none"><polyline fill="none" stroke="#ffb340" stroke-width="2" points="0,16 15,15 30,13 45,12 60,9 75,7 90,6 100,5"/></svg></div>
+        <div class="stat"><div class="k">Memória usada</div><div class="v">13,1 GB</div>
+          <svg class="spark" viewBox="0 0 100 22" preserveAspectRatio="none"><polyline fill="none" stroke="#7c8cff" stroke-width="2" points="0,12 15,12 30,11 45,10 60,9 75,8 90,8 100,7"/></svg></div>
+        <div class="stat"><div class="k">CPU</div><div class="v">34%</div>
+          <svg class="spark" viewBox="0 0 100 22" preserveAspectRatio="none"><polyline fill="none" stroke="#3ddc84" stroke-width="2" points="0,14 15,8 30,16 45,10 60,15 75,9 90,13 100,11"/></svg></div>
+        <div class="stat"><div class="k">Swap</div><div class="v">2,1 GB</div>
+          <svg class="spark" viewBox="0 0 100 22" preserveAspectRatio="none"><polyline fill="none" stroke="#ff5c5c" stroke-width="2" points="0,20 15,19 30,18 45,16 60,14 75,12 90,10 100,9"/></svg></div>
+      </div>
+      <div class="alert">
+        <div style="display:flex;justify-content:space-between;align-items:center"><span><b>4 esquecidos</b> <span style="color:var(--mut)">· liberaria 6,1 GB</span></span><span class="btn red">Fechar 3 selecionados</span></div>
+        <span class="chip"><input type="checkbox" checked> Next dev · eleva-contracts-ui · 4 d</span>
+        <span class="chip"><input type="checkbox" checked> Vite · systemwra · 5 d</span>
+        <span class="chip"><input type="checkbox"> Claude suspenso · 19 d</span>
+        <span class="chip"><input type="checkbox" checked> Playwright órfão · 7 d</span>
+      </div>
+      <div class="tbl">
+        <div class="r h"><span></span><span>Nome</span><span>Memória</span><span>CPU</span><span>Aberto há</span><span></span></div>
+        <div class="r sel"><span class="ico" style="background:#111;color:#fff">N</span><span class="nm">▾ <b>eleva-contracts-ui</b><span class="s">Next.js dev</span><span class="tag t-w">esquecido</span></span><span>2,5 GB<div class="bar"><i style="width:100%;background:var(--warn)"></i></div></span><span>0,3%</span><span>4 dias</span><span class="x">✕</span></div>
+        <div class="r c"><span></span><span class="nm">next-server <span class="s">:3000 · PID 71066</span></span><span>2,5 GB</span><span>0,3%</span><span>4 dias</span><span class="x">✕</span></div>
+        <div class="r"><span class="ico" style="background:#5059c9;color:#fff">T</span><span class="nm">▸ <b>Microsoft Teams</b><span class="s">9 processos</span></span><span>2,1 GB<div class="bar"><i style="width:84%;background:var(--acc)"></i></div></span><span>4%</span><span>2 dias</span><span class="x">✕</span></div>
+        <div class="r"><span class="ico" style="background:linear-gradient(135deg,#ff6b9a,#7c5cff);color:#fff">A</span><span class="nm">▸ <b>Arc</b><span class="s">14 processos</span></span><span>1,8 GB<div class="bar"><i style="width:72%;background:var(--acc)"></i></div></span><span>6%</span><span>5 dias</span><span class="x">✕</span></div>
+        <div class="r"><span class="ico" style="background:#d97757;color:#fff">C</span><span class="nm">▸ <b>Claude Code</b><span class="s">4 sessões</span><span class="tag t-b">1 suspensa</span></span><span>1,4 GB<div class="bar"><i style="width:56%;background:var(--acc)"></i></div></span><span>2%</span><span>até 19 d</span><span class="x"></span></div>
+        <div class="r"><span class="ico" style="background:#646cff;color:#fff">V</span><span class="nm">▸ <b>systemwra</b><span class="s">Vite dev :5199</span><span class="tag t-w">esquecido</span></span><span>1,5 GB<div class="bar"><i style="width:60%;background:var(--warn)"></i></div></span><span>0,1%</span><span>5 dias</span><span class="x">✕</span></div>
+        <div class="r"><span class="ico" style="background:#00758f;color:#fff">M</span><span class="nm">▸ <b>MySQL</b><span class="s">serviço do sistema</span><span class="tag t-a">ignorado</span></span><span>611 MB<div class="bar"><i style="width:24%;background:var(--mut2)"></i></div></span><span>0,2%</span><span>47 dias</span><span class="x"></span></div>
+      </div>
+    </div>
+    <div class="side">
+      <div style="display:flex;gap:10px;align-items:center"><span class="ico" style="background:#111;color:#fff;width:32px;height:32px;font-size:15px;border-radius:8px">N</span>
+        <div><div style="font-weight:600;font-size:13px">next-server</div><div style="color:var(--mut)">Servidor de dev do Next.js 16</div></div></div>
+      <div style="margin-top:12px;padding:9px 10px;border-radius:8px;background:rgba(255,179,64,.10);color:var(--warn);font-size:11.5px">Sem uso de CPU há 3 dias. Provavelmente esquecido.</div>
+      <div class="kv">
+        <b>Projeto</b><span>eleva-contracts-ui</span>
+        <b>Pasta</b><span style="color:var(--mut)">~/Dev/trabalho/m4all/contratos/eleva-contracts-ui</span>
+        <b>Porta</b><span>3000 (localhost)</span>
+        <b>Iniciado</b><span>16/10 às 17:43 · 4 dias</span>
+        <b>Memória</b><span>2,5 GB</span>
+        <b>CPU</b><span>0,3%</span>
+        <b>Pai</b><span>zsh · terminal ttys004</span>
+        <b>PID</b><span>71066</span>
+      </div>
+      <div style="display:flex;gap:8px;margin-top:16px"><span class="btn red">Fechar</span><span class="btn ghost">Forçar</span><span class="btn ghost">Abrir pasta</span></div>
+      <div style="margin-top:10px;color:var(--mut2);font-size:11px">☐ Sempre ignorar este processo</div>
+    </div>
+  </div>
+</div>
+</div>
