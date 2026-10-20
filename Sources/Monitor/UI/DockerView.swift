@@ -32,7 +32,7 @@ struct DockerView: View {
     private func line(_ c: DockerContainer) -> some View {
         HStack(spacing: 10) {
             cells(c.name, c.composeProject ?? "—", c.image, c.state, Format.bytes(c.memoryBytes),
-                  String(format: "%.1f%%", c.cpuPercent).replacingOccurrences(of: ".", with: ","),
+                  Format.cpu(c.cpuPercent, cores: ProcessInfo.processInfo.activeProcessorCount),
                   c.publishedPorts.isEmpty ? "—" : c.publishedPorts.map(String.init).joined(separator: ", "))
             Button("Parar") { onStop(c) }.buttonStyle(PillButton())
         }

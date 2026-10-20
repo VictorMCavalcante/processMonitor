@@ -61,7 +61,7 @@ struct DetailPanel: View {
             if !r.ports.isEmpty { field("Porta", r.ports.map(String.init).joined(separator: ", ")) }
             field("Iniciado", started(t.group.oldestStart))
             field("Memória", Format.bytes(isSingle ? r.snapshot.footprintBytes : t.group.footprintBytes))
-            field("CPU", String(format: "%.1f%%", isSingle ? r.cpuPercent : t.group.cpuPercent).replacingOccurrences(of: ".", with: ","))
+            field("CPU", Format.cpu(isSingle ? r.cpuPercent : t.group.cpuPercent, cores: ProcessInfo.processInfo.activeProcessorCount) + " do Mac")
             if isSingle {
                 field("Pai", parent(r))
                 field("PID", String(r.id))
