@@ -38,3 +38,9 @@ extension ProcessRow {
         return ProcessRow(snapshot: snap, identified: Identified(kind: resolvedKind, title: title, project: project, appBundlePath: app), cpuPercent: 0, ports: [])
     }
 }
+
+extension UserDefaults {
+    static func ephemeral() -> UserDefaults {
+        UserDefaults(suiteName: "monitor-test-\(UUID().uuidString)")!
+    }
+}
