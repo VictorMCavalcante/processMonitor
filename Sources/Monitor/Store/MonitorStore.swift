@@ -22,6 +22,7 @@ final class MonitorStore {
 
     @ObservationIgnored private var systemSampler = SystemSampler()
     @ObservationIgnored private var cpuTracker = CPUTracker()
+    var sockets: [ListeningSocket] = []
     @ObservationIgnored private var ports: [Int32: [UInt16]] = [:]
     @ObservationIgnored private var lastPortScan = Date.distantPast
     @ObservationIgnored private var loop: Task<Void, Never>?
@@ -52,10 +53,14 @@ final class MonitorStore {
 
     func refresh() async {
         let scanPorts = Date().timeIntervalSince(lastPortScan) >= 15
-        let (snaps, newPorts) = await Task.detached(priority: .utility) { () -> ([ProcessSnapshot], [Int32: [UInt16]]?) in
-            (ProcessSampler().sample(), scanPorts ? PortScanner.scan() : nil)
+        let (snaps, newSockets) = await Task.detached(priority: .utility) { () -> ([ProcessSnapshot], [ListeningSocket]?) in
+            (ProcessSampler().sample(), scanPorts ? PortScanner.scanSockets() : nil)
         }.value
-        if let newPorts { ports = newPorts; lastPortScan = Date() }
+        if let newSockets {
+            sockets = newSockets
+            ports = PortScanner.byPid(newSockets)
+            lastPortScan = Date()
+        }
         let at = Date()
         now = at
         let s = systemSampler.sample()
