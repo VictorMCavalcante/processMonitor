@@ -47,14 +47,14 @@ final class FakeAppIndex: AppIndex {
     let tools: Set<String>
 
     init(bundles: [String: String] = [:], names: [String: String] = [:], tools: Set<String> = []) {
-        self.bundles = bundles
+        self.bundles = Dictionary(bundles.map { ($0.key.lowercased(), $0.value) }) { a, _ in a }
         self.names = names
         self.tools = tools
     }
 
-    func appPath(bundleID: String) -> String? { bundles[bundleID] }
+    func appPath(bundleID: String) -> String? { bundles[bundleID.lowercased()] }
 
-    func appPath(bundleIDPrefix: String) -> String? { bundles.first { $0.key.hasPrefix(bundleIDPrefix) }?.value }
+    var bundleIDs: Set<String> { Set(bundles.keys) }
 
     func appPath(matchingName name: String) -> String? {
         let query = AppNameMatch.normalize(name)

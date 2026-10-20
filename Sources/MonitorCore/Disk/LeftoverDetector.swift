@@ -5,7 +5,7 @@ public enum LeftoverDetector {
     private static let protectedPlaces: Set<String> = ["Containers", "Group Containers"]
     private static let maybePlaces: Set<String> = ["Application Support", "Caches", "Logs"]
 
-    private static let appleNames: Set<String> = Set(["AddressBook", "Animoji", "CallHistoryDB", "CallHistoryTransactions", "CloudDocs", "CrashReporter", "DiskImages", "Dock", "FileProvider", "icdd", "iCloud", "Knowledge", "MobileSync", "networkserviceproxy", "SyncServices", "Accounts", "ControlCenter", "DifferentialPrivacy", "FaceTime", "Quick Look", "SpeechRecognitionCore", "Spotlight", "TrustedPeersHelper", "AppStore", "Mail", "Safari", "Photos", "Siri", "homed", "identityservicesd", "locationaccessstored", "videosubscriptionsd"].map { $0.lowercased() })
+    private static let appleNames: Set<String> = Set(["AddressBook", "Animoji", "CallHistoryDB", "CallHistoryTransactions", "CloudDocs", "CrashReporter", "DiskImages", "Dock", "FileProvider", "icdd", "iCloud", "Knowledge", "MobileSync", "networkserviceproxy", "SyncServices", "Accounts", "ControlCenter", "DifferentialPrivacy", "FaceTime", "Quick Look", "SpeechRecognitionCore", "Spotlight", "TrustedPeersHelper", "AppStore", "Mail", "Safari", "Photos", "Siri", "homed", "identityservicesd", "locationaccessstored", "videosubscriptionsd", "GeoServices", "CloudKit", "FamilyCircle", "familycircled", "PassKit", "GameKit", "SiriTTS", "askpermissiond", "tipsd", "contactsd", "homeenergyd", "icloudmailagent", "assistant_service"].map { $0.lowercased() })
     private static let dataLike = ["mysql", "postgres", "mongo", "redis", "sqlite", "database", "backup", "save", "mobilesync", "keychain"]
 
     public static func ownerBundleID(folder name: String, in parent: String, fs: DiskFS) -> String? {
@@ -27,6 +27,8 @@ public enum LeftoverDetector {
             id = name.hasSuffix(".plist") ? String(name.dropLast(6)) : nil
         case "Saved Application State":
             id = name.hasSuffix(".savedState") ? String(name.dropLast(11)) : nil
+        case "HTTPStorages":
+            id = name.hasSuffix(".binarycookies") ? String(name.dropLast(14)) : name
         default:
             id = name
         }
@@ -36,10 +38,22 @@ public enum LeftoverDetector {
         return valid ? id : nil
     }
 
+    private static let evidencePlaces: Set<String> = ["Preferences", "Saved Application State", "Containers"]
+
+    private static func isApple(_ id: String) -> Bool {
+        let lower = id.lowercased()
+        let parts = lower.split(separator: ".")
+        return lower.hasPrefix("systemgroup.") || lower.hasPrefix("is.workflow")
+            || zip(parts, parts.dropFirst()).contains { $0 == "com" && $1 == "apple" }
+    }
+
     private static func installed(_ id: String, apps: AppIndex) -> Bool {
-        let parts = id.split(separator: ".")
+        let lower = id.lowercased()
+        let parts = lower.split(separator: ".")
+        let vendor = parts.prefix(2).joined(separator: ".")
+        if apps.bundleIDs.contains(where: { $0.hasPrefix(lower) || lower.hasPrefix($0) || $0 == vendor || $0.hasPrefix(vendor + ".") }) { return true }
         for n in stride(from: parts.count, through: 2, by: -1) where apps.appPath(bundleID: parts.prefix(n).joined(separator: ".")) != nil { return true }
-        return apps.appPath(bundleIDPrefix: id + ".") != nil
+        return false
     }
 
     private struct Group {
@@ -65,7 +79,7 @@ public enum LeftoverDetector {
             for name in (fs.list(parent) ?? []).sorted() {
                 let path = parent + "/" + name
                 if let id = ownerBundleID(folder: name, in: parent, fs: fs) {
-                    guard !id.lowercased().hasPrefix("com.apple."), !installed(id, apps: apps) else { continue }
+                    guard !isApple(id), !installed(id, apps: apps) else { continue }
                     leftovers[id, default: Group(title: String(id.split(separator: ".")[2]))].add(path, parent: place, bytes: fs.size(path))
                 } else if maybePlaces.contains(place), isMaybe(name, path: path, fs: fs, apps: apps) {
                     maybes[AppNameMatch.normalize(name), default: Group(title: name)].add(path, parent: place, bytes: fs.size(path))
@@ -73,6 +87,7 @@ public enum LeftoverDetector {
             }
         }
         let confident = leftovers.compactMap { id, group -> DiskItem? in
+            guard !evidencePlaces.isDisjoint(with: group.parents) else { return nil }
             let title = fs.plistString(home + "/Library/Preferences/" + id + ".plist", key: "CFBundleName") ?? group.title
             return item(group, id: "leftover:" + id, title: title, category: .leftover)
         }
@@ -82,7 +97,8 @@ public enum LeftoverDetector {
 
     private static func isMaybe(_ name: String, path: String, fs: DiskFS, apps: AppIndex) -> Bool {
         let lower = name.lowercased()
-        return fs.list(path) != nil && !name.hasPrefix(".") && !lower.contains("apple") && !appleNames.contains(lower)
+        return fs.list(path) != nil && !name.hasPrefix(".") && !lower.hasPrefix("default.store") && !(name == lower && name.hasSuffix("d"))
+            && !lower.contains("apple") && !appleNames.contains(lower)
             && !dataLike.contains { lower.contains($0) } && apps.appPath(matchingName: name) == nil && !apps.isKnownTool(name)
     }
 

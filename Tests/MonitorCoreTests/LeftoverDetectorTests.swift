@@ -16,12 +16,13 @@ private let mb: UInt64 = 1_048_576
     let fs = FakeDiskFS(files: [
         "/h/Library/Application Support/com.openai.atlas/d": (800 * mb, .distantPast),
         "/h/Library/Caches/com.openai.atlas/c": (57 * mb, .distantPast),
+        "/h/Library/Preferences/com.openai.atlas.plist": (1 * mb, .distantPast),
         "/h/Library/Application Support/com.apple.wallpaper/w": (900 * mb, .distantPast),
         "/h/Library/Application Support/com.tinyspeck.slackmacgap/s": (900 * mb, .distantPast),
     ])
     let items = LeftoverDetector.detect(fs: fs, home: "/h", apps: FakeAppIndex(bundles: ["com.tinyspeck.slackmacgap": "/Applications/Slack.app"]), includeProtected: false)
     #expect(items.map(\.id) == ["leftover:com.openai.atlas"])
-    #expect(items[0].bytes == 857 * mb && items[0].detail == "Application Support · Caches" && items[0].checkedByDefault == false)
+    #expect(items[0].bytes == 858 * mb && items[0].detail == "Application Support · Caches · Preferences" && items[0].checkedByDefault == false)
 }
 
 @Test func maybeLeftoverExcludesDataInstalledToolsAndUnreadable() {
@@ -66,8 +67,54 @@ private let mb: UInt64 = 1_048_576
 @Test func relatedInstalledBundlesAreNotLeftovers() {
     let fs = FakeDiskFS(files: [
         "/h/Library/Caches/com.microsoft.VSCode.ShipIt/a": (300 * mb, .distantPast),
-        "/h/Library/Group Containers/group.com.docker/b": (300 * mb, .distantPast),
+        "/h/Library/Preferences/com.microsoft.VSCode.ShipIt.plist": (1, .distantPast),
+        "/h/Library/Group Containers/6N38VWS5BX.ru.keepcoder.Telegram/b": (300 * mb, .distantPast),
+        "/h/Library/Preferences/ru.keepcoder.Telegram.plist": (1, .distantPast),
     ])
-    let apps = FakeAppIndex(bundles: ["com.microsoft.VSCode": "/Applications/VSCode.app", "com.docker.docker": "/Applications/Docker.app"])
+    let apps = FakeAppIndex(bundles: ["com.microsoft.vscode": "/Applications/VSCode.app", "ru.keepcoder.telegram": "/Applications/Telegram.app"])
     #expect(LeftoverDetector.detect(fs: fs, home: "/h", apps: apps, includeProtected: true).isEmpty)
+}
+
+@Test func teamsGroupContainerMatchesRawPrefix() {
+    let fs = FakeDiskFS(files: [
+        "/h/Library/Group Containers/UBF8T346G9.com.microsoft.teams/a": (300 * mb, .distantPast),
+        "/h/Library/Preferences/com.microsoft.teams.plist": (1, .distantPast),
+    ])
+    #expect(LeftoverDetector.detect(fs: fs, home: "/h", apps: FakeAppIndex(bundles: ["com.microsoft.teams2": "/Applications/Teams.app"]), includeProtected: true).isEmpty)
+}
+
+@Test func sameVendorInstalledIsNotLeftover() {
+    let fs = FakeDiskFS(files: [
+        "/h/Library/Caches/com.google.Keystone/a": (300 * mb, .distantPast),
+        "/h/Library/Preferences/com.google.Keystone.plist": (1, .distantPast),
+    ])
+    #expect(LeftoverDetector.detect(fs: fs, home: "/h", apps: FakeAppIndex(bundles: ["com.google.Chrome": "/Applications/Chrome.app"]), includeProtected: false).isEmpty)
+}
+
+@Test func leftoverNeedsEvidenceOfAnApp() {
+    let fs = FakeDiskFS(files: ["/h/Library/Caches/org.swift.swiftpm/a": (300 * mb, .distantPast)])
+    #expect(LeftoverDetector.detect(fs: fs, home: "/h", apps: FakeAppIndex(), includeProtected: false).isEmpty)
+}
+
+@Test func appleIdsAnywhereAreExcluded() {
+    let fs = FakeDiskFS(files: [
+        "/h/Library/Preferences/group.com.apple.mail.plist": (60 * mb, .distantPast),
+        "/h/Library/Preferences/systemgroup.com.x.y.plist": (60 * mb, .distantPast),
+        "/h/Library/Preferences/is.workflow.my.plist": (60 * mb, .distantPast),
+    ])
+    #expect(LeftoverDetector.detect(fs: fs, home: "/h", apps: FakeAppIndex(), includeProtected: false).isEmpty)
+}
+
+@Test func appleSystemCachesAreNotMaybe() {
+    let fs = FakeDiskFS(files: [
+        "/h/Library/Caches/GeoServices/a": (60 * mb, .distantPast),
+        "/h/Library/Caches/somethingd/a": (60 * mb, .distantPast),
+        "/h/Library/Caches/default.store-x/a": (60 * mb, .distantPast),
+    ])
+    #expect(LeftoverDetector.detect(fs: fs, home: "/h", apps: FakeAppIndex(), includeProtected: false).isEmpty)
+}
+
+@Test func httpStoragesCookiesStripSuffix() {
+    let fs = FakeDiskFS(files: [:])
+    #expect(LeftoverDetector.ownerBundleID(folder: "com.gone.app.binarycookies", in: "/h/Library/HTTPStorages", fs: fs) == "com.gone.app")
 }

@@ -3,7 +3,7 @@ import CoreServices
 
 public protocol AppIndex: AnyObject {
     func appPath(bundleID: String) -> String?
-    func appPath(bundleIDPrefix: String) -> String?
+    var bundleIDs: Set<String> { get }
     func appPath(matchingName name: String) -> String?
     func isKnownTool(_ name: String) -> Bool
 }
@@ -33,7 +33,7 @@ public final class SystemAppIndex: AppIndex {
         func add(_ app: String) {
             let plist = app + "/Contents/Info.plist"
             let id = fs.plistString(plist, key: "CFBundleIdentifier")
-            if let id { bundles[id] = app }
+            if let id { bundles[id.lowercased()] = app }
             var keys = [((app as NSString).lastPathComponent as NSString).deletingPathExtension]
             if let name = fs.plistString(plist, key: "CFBundleName") { keys.append(name) }
             if let id, id.split(separator: ".").count >= 2 { keys.append(String(id.split(separator: ".")[1])) }
@@ -53,14 +53,12 @@ public final class SystemAppIndex: AppIndex {
     }
 
     public func appPath(bundleID: String) -> String? {
-        if let path = bundles[bundleID] { return path }
+        if let path = bundles[bundleID.lowercased()] { return path }
         let urls = LSCopyApplicationURLsForBundleIdentifier(bundleID as CFString, nil)?.takeRetainedValue() as? [URL] ?? []
         return urls.map(\.path).first { !$0.contains("/.Trash/") && FileManager.default.fileExists(atPath: $0) }
     }
 
-    public func appPath(bundleIDPrefix: String) -> String? {
-        bundles.first { $0.key.hasPrefix(bundleIDPrefix) }?.value
-    }
+    public var bundleIDs: Set<String> { Set(bundles.keys) }
 
     public func appPath(matchingName name: String) -> String? {
         let query = AppNameMatch.normalize(name)
