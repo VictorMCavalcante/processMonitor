@@ -40,3 +40,29 @@ final class FakeDiskFS: DiskFS {
 
     func plistString(_ path: String, key: String) -> String? { plists[path]?[key] }
 }
+
+final class FakeAppIndex: AppIndex {
+    let bundles: [String: String]
+    let names: [String: String]
+    let tools: Set<String>
+
+    init(bundles: [String: String] = [:], names: [String: String] = [:], tools: Set<String> = []) {
+        self.bundles = bundles
+        self.names = names
+        self.tools = tools
+    }
+
+    func appPath(bundleID: String) -> String? { bundles[bundleID] }
+
+    func appPath(bundleIDPrefix: String) -> String? { bundles.first { $0.key.hasPrefix(bundleIDPrefix) }?.value }
+
+    func appPath(matchingName name: String) -> String? {
+        let query = AppNameMatch.normalize(name)
+        return names.first { AppNameMatch.matches(query, AppNameMatch.normalize($0.key)) }?.value
+    }
+
+    func isKnownTool(_ name: String) -> Bool {
+        let query = AppNameMatch.normalize(name)
+        return tools.contains { AppNameMatch.matches(query, AppNameMatch.normalize($0)) }
+    }
+}
