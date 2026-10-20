@@ -15,10 +15,10 @@ struct MonitorApp: App {
         .menuBarExtraStyle(.window)
 
         Window("Monitor", id: "main") {
-            Text("Janela detalhada")
-                .frame(minWidth: 900, minHeight: 600)
+            MainWindow(store: store)
                 .onAppear { store.windowVisible = true }
                 .onDisappear { store.windowVisible = false }
         }
+        .defaultSize(width: 1240, height: 820)
     }
 }
