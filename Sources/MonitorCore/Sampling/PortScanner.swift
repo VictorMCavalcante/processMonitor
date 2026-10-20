@@ -45,18 +45,9 @@ public enum PortScanner {
         byPid(parseSockets(lsofOutput: lsofOutput))
     }
 
-    public static func scanSockets() -> [ListeningSocket] {
-        let process = Process()
-        process.executableURL = URL(fileURLWithPath: "/usr/sbin/lsof")
-        process.arguments = ["-nP", "-iTCP", "-sTCP:LISTEN", "-Fpn"]
-        let pipe = Pipe()
-        process.standardOutput = pipe
-        process.standardError = FileHandle.nullDevice
-        do { try process.run() } catch { return [] }
-        DispatchQueue.global().asyncAfter(deadline: .now() + 3) { if process.isRunning { process.terminate() } }
-        let data = pipe.fileHandleForReading.readDataToEndOfFile()
-        process.waitUntilExit()
-        return parseSockets(lsofOutput: String(decoding: data, as: UTF8.self))
+    public static func scanSockets(runner: CommandRunner = SystemCommandRunner()) -> [ListeningSocket] {
+        guard let result = runner.run("/usr/sbin/lsof", ["-nP", "-iTCP", "-sTCP:LISTEN", "-Fpn"], timeout: 3) else { return [] }
+        return parseSockets(lsofOutput: result.output)
     }
 
     public static func scan() -> [Int32: [UInt16]] {
