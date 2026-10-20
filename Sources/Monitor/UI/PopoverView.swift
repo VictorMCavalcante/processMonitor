@@ -9,6 +9,7 @@ struct PopoverView: View {
         VStack(alignment: .leading, spacing: 0) {
             header
             forgotten.padding(.horizontal, 12).padding(.bottom, 10)
+            extras.padding(.horizontal, 14).padding(.bottom, 8)
             consumers.padding(.horizontal, 14).padding(.bottom, 12)
         }
         .frame(width: 310)
@@ -57,6 +58,31 @@ struct PopoverView: View {
         .overlay(RoundedRectangle(cornerRadius: 9).stroke((store.suspects.isEmpty ? Theme.ok : Theme.warn).opacity(0.3)))
     }
 
+    @ViewBuilder
+    private var extras: some View {
+        let ports = store.highlightedPorts
+        let peak = store.peaks.last
+        if !ports.isEmpty || peak != nil {
+            VStack(alignment: .leading, spacing: 4) {
+                if !ports.isEmpty {
+                    HStack(spacing: 6) {
+                        Text("Portas").foregroundStyle(Theme.muted)
+                        Text(ports.map(String.init).joined(separator: " · ")).font(.system(size: 12, design: .monospaced))
+                    }
+                }
+                if let peak {
+                    HStack(spacing: 6) {
+                        Text("Último pico").foregroundStyle(Theme.muted)
+                        Text(PeakText.when(peak.start, now: store.now) + " · " + PeakText.level(peak.maxLevel))
+                            .foregroundStyle(PeakText.color(peak.maxLevel))
+                    }
+                }
+            }
+            .font(.system(size: 12))
+            .frame(maxWidth: .infinity, alignment: .leading)
+        }
+    }
+
     private var consumers: some View {
         VStack(alignment: .leading, spacing: 5) {
             Text("MAIORES CONSUMIDORES").font(.system(size: 10.5)).foregroundStyle(Theme.muted2)
@@ -96,5 +122,26 @@ struct PressureRing: View {
             Text("\(percent)%").font(.system(size: 13, weight: .bold))
         }
         .frame(width: 60, height: 60)
+    }
+}
+
+enum PeakText {
+    static func when(_ d: Date, now: Date) -> String {
+        let cal = Calendar.current
+        let f = DateFormatter()
+        f.locale = Locale(identifier: "pt_BR")
+        f.dateFormat = "HH:mm"
+        if cal.isDate(d, inSameDayAs: now) { return "hoje " + f.string(from: d) }
+        if let y = cal.date(byAdding: .day, value: -1, to: now), cal.isDate(d, inSameDayAs: y) { return "ontem " + f.string(from: d) }
+        f.dateFormat = "dd/MM HH:mm"
+        return f.string(from: d)
+    }
+
+    static func level(_ raw: Int) -> String {
+        raw >= PressureLevel.critical.rawValue ? "crítico" : "moderado"
+    }
+
+    static func color(_ raw: Int) -> Color {
+        raw >= PressureLevel.critical.rawValue ? Theme.bad : Theme.warn
     }
 }

@@ -24,6 +24,15 @@ final class MonitorStore {
     @ObservationIgnored private var cpuTracker = CPUTracker()
     var sockets: [ListeningSocket] = []
     var dockerRunning = false
+    var containers: [DockerContainer] = []
+    var runaways: [Runaway] = []
+    var peaks: [PeakEpisode] = []
+    @ObservationIgnored private var runawayTracker = RunawayTracker()
+    @ObservationIgnored private var peakRecorder: PeakRecorder
+    @ObservationIgnored private let peakStore = PeakStore(url: PeakStore.defaultURL)
+    @ObservationIgnored private var lastPrune = Date.distantPast
+    @ObservationIgnored private var lastContainerScan = Date.distantPast
+    @ObservationIgnored private let docker = DockerClient()
     @ObservationIgnored private var ports: [Int32: [UInt16]] = [:]
     @ObservationIgnored private var lastPortScan = Date.distantPast
     @ObservationIgnored private var loop: Task<Void, Never>?
@@ -41,6 +50,64 @@ final class MonitorStore {
     }
 
     var suspectBytes: UInt64 { suspects.reduce(0) { $0 + $1.row.snapshot.footprintBytes } }
+
+    init() {
+        peakRecorder = PeakRecorder(episodes: PeakStore(url: PeakStore.defaultURL).load())
+        peaks = peakRecorder.episodes
+    }
+
+    var portEntries: [PortEntry] {
+        let entries = PortTable.build(sockets: sockets, rows: rows, containers: containers)
+        let query = search.trimmingCharacters(in: .whitespaces).lowercased()
+        guard !query.isEmpty else { return entries }
+        return entries.filter { e in
+            [String(e.port), e.title, e.project ?? ""].contains { $0.lowercased().contains(query) }
+        }
+    }
+
+    var highlightedPorts: [UInt16] {
+        let entries = PortTable.build(sockets: sockets, rows: rows, containers: containers)
+        let priority: (PortEntry) -> Int = { e in
+            switch e.owner {
+            case .container: 0
+            case .process(let row): [.devServer, .database].contains(row.identified.kind) ? 0 : 1
+            }
+        }
+        let sorted = entries.sorted { priority($0) != priority($1) ? priority($0) < priority($1) : $0.port < $1.port }
+        var seen: Set<UInt16> = []
+        return sorted.compactMap { seen.insert($0.port).inserted ? $0.port : nil }.prefix(6).map { $0 }
+    }
+
+    func sessionCost(_ snap: ProcessSnapshot) -> SessionCost {
+        SessionCost.compute(session: snap, rows: rows)
+    }
+
+    func releasePort(_ port: UInt16) -> PortRelease {
+        PortTable.release(port: port, entries: PortTable.build(sockets: sockets, rows: rows, containers: containers), all: allSnapshots, myUid: getuid())
+    }
+
+    func stopContainer(_ id: String) async -> String? {
+        let client = docker
+        let message = await Task.detached { client.stop(id) }.value
+        lastMessage = message
+        lastContainerScan = .distantPast
+        lastPortScan = .distantPast
+        await refresh()
+        return message
+    }
+
+    func restart(_ group: ProcessGroup) async -> String? {
+        guard let app = group.rows.first?.identified.appBundlePath else { return "Só apps com janela podem ser reiniciados." }
+        let message = await AppRestarter.restart(bundlePath: app)
+        lastMessage = message
+        await refresh()
+        return message
+    }
+
+    func dockerRunningCount() async -> Int {
+        let client = docker
+        return await Task.detached { client.runningCount() }.value
+    }
 
     func start() {
         guard loop == nil else { return }
@@ -89,6 +156,23 @@ final class MonitorStore {
         }
         stoppedSince = nextStopped
         suspects = ForgottenDetector.detect(rows, allPids: Set(snaps.map(\.id)), now: at, ignore: ignore, stoppedSince: stoppedByPid)
+        runaways = runawayTracker.update(rows, at: at, myUid: getuid(), ignore: ignore)
+        if peakRecorder.update(stats: s, groups: Grouping.group(rows, mode: .byApp), at: at) {
+            peakStore.save(peakRecorder.episodes)
+        }
+        if at.timeIntervalSince(lastPrune) >= 3600 {
+            peakRecorder.prune(now: at)
+            peakStore.save(peakRecorder.episodes)
+            lastPrune = at
+        }
+        peaks = peakRecorder.episodes
+        if windowVisible && dockerRunning && at.timeIntervalSince(lastContainerScan) >= 15 {
+            let client = docker
+            containers = await Task.detached(priority: .utility) { client.list() }.value
+            lastContainerScan = at
+        } else if !dockerRunning {
+            containers = []
+        }
         onCycle?(self)
     }
 
