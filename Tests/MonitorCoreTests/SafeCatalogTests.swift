@@ -38,7 +38,7 @@ private let mb: UInt64 = 1_048_576
     let fs = FakeDiskFS(files: ["/h/Library/Caches/JetBrains/x": (2000 * mb, .distantPast)])
     let jb = SafeCatalog.scan(fs: fs, home: "/h", runningBundleIDs: [], busyPaths: [], skipProtectedHomeFolders: false).first { $0.title == "JetBrains cache" }
     #expect(jb?.ownerBundlePrefix == "com.jetbrains" && jb?.checkedByDefault == true && jb?.warning == nil)
-    let r = DiskCleaner.clean(jb.map { [$0] } ?? [], runningBundleIDs: ["com.jetbrains.intellij"], exists: { _ in true }, trash: { _ in }, docker: { _ in nil })
+    let r = DiskCleaner.clean(jb.map { [$0] } ?? [], runningBundleIDs: ["com.jetbrains.intellij"], busyPaths: [], exists: { _ in true }, trash: { _ in }, docker: { _ in nil })
     #expect(r.trashedBytes == 0 && r.failures == ["JetBrains cache: feche o app primeiro"])
 }
 
@@ -55,4 +55,10 @@ private let mb: UInt64 = 1_048_576
     #expect(!fs.listed.contains { $0.hasPrefix("/h/Documents") || $0.hasPrefix("/h/Music") || $0.hasSuffix(".app") || $0.hasSuffix(".photoslibrary") })
     let all = SafeCatalog.scan(fs: fs, home: "/h", runningBundleIDs: [], busyPaths: [], skipProtectedHomeFolders: false).first { $0.id == "node_modules" }
     #expect(all?.children.map(\.id).sorted() == ["/h/Documents/p/node_modules", "/h/Music/m/node_modules", "/h/dev/a/node_modules"])
+}
+
+@Test func aerialVideosAreSafeAndChecked() {
+    let fs = FakeDiskFS(files: ["/h/Library/Application Support/com.apple.wallpaper/aerials/videos/a.mov": (9_000 * mb, .distantPast)])
+    let w = SafeCatalog.scan(fs: fs, home: "/h", runningBundleIDs: [], busyPaths: [], skipProtectedHomeFolders: false).first { $0.title == "Wallpapers e protetores aéreos" }
+    #expect(w?.checkedByDefault == true && w?.warning == "o macOS baixa de novo se você usar um fundo animado")
 }

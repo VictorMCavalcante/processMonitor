@@ -2,6 +2,7 @@ import AppKit
 import Foundation
 import MonitorCore
 import Observation
+import os
 
 @MainActor
 @Observable
@@ -10,11 +11,13 @@ final class MonitorStore {
     var history: [String: RingBuffer<Double>] = [
         "pressure": RingBuffer(capacity: 120), "used": RingBuffer(capacity: 120),
         "cpu": RingBuffer(capacity: 120), "swap": RingBuffer(capacity: 120),
+        "gpu": RingBuffer(capacity: 120),
     ]
     var rows: [ProcessRow] = []
     var allSnapshots: [ProcessSnapshot] = []
     var suspects: [Suspect] = []
     var mode: GroupingMode = .byApp
+    var sort: GroupSort = .memory
     var search = ""
     var windowVisible = false
     var lastMessage: String?
@@ -23,6 +26,7 @@ final class MonitorStore {
 
     @ObservationIgnored private var systemSampler = SystemSampler()
     @ObservationIgnored private var cpuTracker = CPUTracker()
+    @ObservationIgnored private var gpuTracker = GPUTracker()
     var sockets: [ListeningSocket] = []
     var dockerRunning = false
     var containers: [DockerContainer] = []
@@ -31,6 +35,14 @@ final class MonitorStore {
     var disk: DiskReport?
     var diskScanning = false
     var diskCleaning = false
+    var diskProgress: DiskProgress?
+    var diskFresh = false
+    var canClean: Bool { diskFresh && !diskScanning && !diskCleaning && disk.map { !DiskReportStore.isStale($0, now: Date()) } == true }
+    @ObservationIgnored private let diskStore = DiskReportStore(url: DiskReportStore.defaultURL)
+    @ObservationIgnored private var diskLoad: Task<Void, Never>?
+    @ObservationIgnored private var diskPartials = 0
+    @ObservationIgnored private var diskScan = 0
+    @ObservationIgnored private var diskStages: Set<String> = []
     @ObservationIgnored private var runawayTracker = RunawayTracker()
     @ObservationIgnored private var peakRecorder: PeakRecorder
     @ObservationIgnored private let peakStore = PeakStore(url: PeakStore.defaultURL)
@@ -51,7 +63,7 @@ final class MonitorStore {
             let fields = [id.title, id.subtitle ?? "", id.project ?? "", row.snapshot.name] + row.ports.map(String.init)
             return fields.contains { $0.lowercased().contains(query) }
         }
-        return Grouping.group(filtered, mode: mode)
+        return Grouping.group(filtered, mode: mode, sort: sort)
     }
 
     var suspectBytes: UInt64 { suspects.reduce(0) { $0 + $1.row.snapshot.footprintBytes } }
@@ -103,33 +115,92 @@ final class MonitorStore {
         return message
     }
 
+    func openDiskTab() async {
+        if diskLoad == nil {
+            let store = diskStore
+            diskLoad = Task {
+                let saved = await Task.detached(priority: .utility) { store.load() }.value
+                if disk == nil { disk = saved }
+            }
+        }
+        await diskLoad?.value
+        if disk.map({ DiskReportStore.isStale($0, now: Date()) }) ?? true { await analyzeDisk() }
+    }
+
     func analyzeDisk() async {
         guard !diskScanning else { return }
         diskScanning = true
+        diskScan += 1
+        diskStages = []
+        diskPartials = 0
+        let scan = diskScan
         let running = Set(NSWorkspace.shared.runningApplications.compactMap(\.bundleIdentifier))
-        let busyKinds: Set<ProcessKind> = [.devServer, .claudeSession, .shell]
-        let busy = rows.filter { busyKinds.contains($0.identified.kind) }.compactMap(\.snapshot.cwd)
+        let busy = busyCwds
         let client = dockerRunning ? docker : nil
-        disk = await Task.detached(priority: .utility) {
+        let store = diskStore
+        let progress: @Sendable (DiskProgress) -> Void = { p in Task { @MainActor [weak self] in self?.diskStep(p, scan: scan) } }
+        let count = OSAllocatedUnfairLock(initialState: 0)
+        let partial: @Sendable (DiskReport) -> Void = { r in
+            let index = count.withLock { n in
+                n += 1
+                return n
+            }
+            Task { @MainActor [weak self] in
+                guard let self, self.diskScan == scan, self.diskScanning, index > self.diskPartials else { return }
+                self.diskPartials = index
+                let finished: Set<DiskCategory> = index == 1 ? [.safe] : [.safe, .leftover, .maybeLeftover]
+                self.disk = self.disk?.merging(partial: r, finished: finished) ?? r
+            }
+        }
+        let report = await Task.detached(priority: .utility) {
             let home = NSHomeDirectory()
-            return DiskAnalyzer.analyze(fs: RealDiskFS(), home: home, apps: SystemAppIndex(home: home), volume: DiskAnalyzer.volume(home: home),
-                                        docker: client?.diskUsage(), runningBundleIDs: running, busyPaths: busy, now: Date())
+            progress(DiskProgress(stage: "Listando apps instalados"))
+            let apps = SystemAppIndex(home: home)
+            let usage = client.flatMap { c -> DockerDiskUsage? in
+                progress(DiskProgress(stage: "Medindo Docker"))
+                return c.diskUsage()
+            }
+            let report = DiskAnalyzer.analyze(fs: RealDiskFS(), home: home, apps: apps, volume: DiskAnalyzer.volume(home: home),
+                                              docker: usage, runningBundleIDs: running, busyPaths: busy, now: Date(),
+                                              progress: progress, partial: partial)
+            store.save(report)
+            return report
         }.value
+        disk = report
+        diskFresh = true
+        diskProgress = nil
         diskScanning = false
     }
 
+    private var busyCwds: [String] {
+        let kinds: Set<ProcessKind> = [.devServer, .claudeSession, .shell]
+        return rows.filter { kinds.contains($0.identified.kind) }.compactMap(\.snapshot.cwd)
+    }
+
+    private func diskStep(_ p: DiskProgress, scan: Int) {
+        guard scan == diskScan, diskScanning else { return }
+        if let current = diskProgress, current.stage == p.stage {
+            if let a = current.done, let b = p.done, b < a { return }
+        } else if !diskStages.insert(p.stage).inserted {
+            return
+        }
+        diskProgress = p
+    }
+
     func cleanDisk(_ leaves: [DiskItem]) async -> CleanResult {
-        guard !diskCleaning else { return CleanResult() }
+        guard canClean else { return CleanResult() }
         diskCleaning = true
         defer { diskCleaning = false }
         let running = Set(NSWorkspace.shared.runningApplications.compactMap(\.bundleIdentifier))
+        let busy = busyCwds
         let client = docker
         let result = await Task.detached(priority: .utility) {
-            DiskCleaner.clean(leaves, runningBundleIDs: running,
+            DiskCleaner.clean(leaves, runningBundleIDs: running, busyPaths: busy,
                               exists: { FileManager.default.fileExists(atPath: $0) },
                               trash: { try FileManager.default.trashItem(at: URL(fileURLWithPath: $0), resultingItemURL: nil) },
                               docker: { client.prune($0) })
         }.value
+        diskStore.clear()
         while diskScanning { try? await Task.sleep(for: .milliseconds(100)) }
         await analyzeDisk()
         var summary: [String] = []
@@ -164,8 +235,8 @@ final class MonitorStore {
 
     func refresh() async {
         let scanPorts = Date().timeIntervalSince(lastPortScan) >= 15
-        let (snaps, newSockets) = await Task.detached(priority: .utility) { () -> ([ProcessSnapshot], [ListeningSocket]?) in
-            (ProcessSampler().sample(), scanPorts ? PortScanner.scanSockets() : nil)
+        let (snaps, newSockets, gpuReading) = await Task.detached(priority: .utility) { () -> ([ProcessSnapshot], [ListeningSocket]?, GPUReading?) in
+            (ProcessSampler().sample(), scanPorts ? PortScanner.scanSockets() : nil, GPUSampler.read())
         }.value
         if let newSockets {
             sockets = newSockets
@@ -174,20 +245,24 @@ final class MonitorStore {
         }
         let at = Date()
         now = at
-        let s = systemSampler.sample()
+        var s = systemSampler.sample()
+        s.gpuPercent = gpuReading?.utilization
+        s.gpuMemoryBytes = gpuReading?.memoryInUse
         stats = s
         history["pressure"]?.append(Double(s.pressurePercent))
         history["used"]?.append(Double(s.usedBytes))
         history["cpu"]?.append(s.cpuPercent)
         history["swap"]?.append(Double(s.swapUsedBytes))
+        if let g = s.gpuPercent { history["gpu"]?.append(g) }
         let cpu = cpuTracker.update(snaps, at: at)
+        let gpu = gpuReading.map { r in gpuTracker.update(r.perPid, starts: Dictionary(snaps.map { ($0.id, $0.startTime) }, uniquingKeysWith: { a, _ in a }), at: at) } ?? [:]
         let live = snaps.filter { $0.state != .zombie && $0.id != getpid() }
         allSnapshots = snaps
         let context = ClassifyContext(dockerRunning: Classifier.dockerRunning(in: snaps))
         dockerRunning = context.dockerRunning
         rows = live.map { snap in
             let p = ports[snap.id] ?? []
-            return ProcessRow(snapshot: snap, identified: Classifier.classify(snap, ports: p, context: context), cpuPercent: cpu[snap.id] ?? 0, ports: p)
+            return ProcessRow(snapshot: snap, identified: Classifier.classify(snap, ports: p, context: context), cpuPercent: cpu[snap.id] ?? 0, ports: p, gpuPercent: gpu[snap.id] ?? 0)
         }
         var nextStopped: [String: Date] = [:]
         var stoppedByPid: [Int32: Date] = [:]

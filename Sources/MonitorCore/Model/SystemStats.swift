@@ -17,13 +17,17 @@ public struct SystemStats: Sendable, Equatable {
     public var totalBytes: UInt64
     public var swapUsedBytes: UInt64
     public var cpuPercent: Double
+    public var gpuPercent: Double?
+    public var gpuMemoryBytes: UInt64?
 
-    public init(pressurePercent: Int, level: PressureLevel, usedBytes: UInt64, totalBytes: UInt64, swapUsedBytes: UInt64, cpuPercent: Double) {
+    public init(pressurePercent: Int, level: PressureLevel, usedBytes: UInt64, totalBytes: UInt64, swapUsedBytes: UInt64, cpuPercent: Double, gpuPercent: Double? = nil, gpuMemoryBytes: UInt64? = nil) {
         self.pressurePercent = pressurePercent
         self.level = level
         self.usedBytes = usedBytes
         self.totalBytes = totalBytes
         self.swapUsedBytes = swapUsedBytes
         self.cpuPercent = cpuPercent
+        self.gpuPercent = gpuPercent
+        self.gpuMemoryBytes = gpuMemoryBytes
     }
 }

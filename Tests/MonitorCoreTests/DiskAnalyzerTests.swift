@@ -71,3 +71,12 @@ private let mb: UInt64 = 1_048_576
     let r = DiskAnalyzer.analyze(fs: fs, home: "/h", apps: apps, volume: (100_000 * mb, 1_000 * mb), docker: nil, runningBundleIDs: [], busyPaths: [], now: .distantPast)
     #expect(!r.items.contains { $0.category == .appData })
 }
+
+@Test func wallpaperAppDataExcludesAerialVideos() {
+    let fs = FakeDiskFS(files: [
+        "/h/Library/Application Support/com.apple.wallpaper/aerials/videos/a.mov": (9_000 * mb, .distantPast),
+        "/h/Library/Application Support/com.apple.wallpaper/Store/x": (10 * mb, .distantPast),
+    ])
+    let r = DiskAnalyzer.analyze(fs: fs, home: "/h", apps: FakeAppIndex(), volume: (100_000 * mb, 10_000 * mb), docker: nil, runningBundleIDs: [], busyPaths: [], now: .distantPast)
+    #expect(r.bytes(.safe) == 9_000 * mb && !r.items.contains { $0.id == "wallpaper" })
+}
