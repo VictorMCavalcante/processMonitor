@@ -1,3 +1,4 @@
+import AppKit
 import Foundation
 import MonitorCore
 import Observation
@@ -27,6 +28,8 @@ final class MonitorStore {
     var containers: [DockerContainer] = []
     var runaways: [Runaway] = []
     var peaks: [PeakEpisode] = []
+    var disk: DiskReport?
+    var diskScanning = false
     @ObservationIgnored private var runawayTracker = RunawayTracker()
     @ObservationIgnored private var peakRecorder: PeakRecorder
     @ObservationIgnored private let peakStore = PeakStore(url: PeakStore.defaultURL)
@@ -97,6 +100,38 @@ final class MonitorStore {
         lastPortScan = .distantPast
         await refresh()
         return message
+    }
+
+    func analyzeDisk() async {
+        guard !diskScanning else { return }
+        diskScanning = true
+        let running = Set(NSWorkspace.shared.runningApplications.compactMap(\.bundleIdentifier))
+        let busyKinds: Set<ProcessKind> = [.devServer, .claudeSession, .shell]
+        let busy = rows.filter { busyKinds.contains($0.identified.kind) }.compactMap(\.snapshot.cwd)
+        let client = dockerRunning ? docker : nil
+        disk = await Task.detached(priority: .utility) {
+            let home = NSHomeDirectory()
+            return DiskAnalyzer.analyze(fs: RealDiskFS(), home: home, apps: SystemAppIndex(home: home), volume: DiskAnalyzer.volume(home: home),
+                                        docker: client?.diskUsage(), runningBundleIDs: running, busyPaths: busy, now: Date())
+        }.value
+        diskScanning = false
+    }
+
+    func cleanDisk(_ leaves: [DiskItem]) async -> CleanResult {
+        let running = Set(NSWorkspace.shared.runningApplications.compactMap(\.bundleIdentifier))
+        let client = docker
+        let result = await Task.detached(priority: .utility) {
+            DiskCleaner.clean(leaves, runningBundleIDs: running,
+                              exists: { FileManager.default.fileExists(atPath: $0) },
+                              trash: { try FileManager.default.trashItem(at: URL(fileURLWithPath: $0), resultingItemURL: nil) },
+                              docker: { client.prune($0) })
+        }.value
+        await analyzeDisk()
+        var parts = ["\(Format.bytes(result.trashedBytes)) na Lixeira"]
+        if result.dockerBytes > 0 { parts[0] += " · \(Format.bytes(result.dockerBytes)) do Docker apagados" }
+        parts += result.failures
+        lastMessage = parts.joined(separator: "; ")
+        return result
     }
 
     func restart(_ group: ProcessGroup) async -> String? {
