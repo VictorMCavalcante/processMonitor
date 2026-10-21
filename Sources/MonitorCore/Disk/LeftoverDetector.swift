@@ -6,6 +6,7 @@ public enum LeftoverDetector {
     private static let maybePlaces: Set<String> = ["Application Support", "Caches", "Logs"]
 
     private static let appleNames: Set<String> = Set(["AddressBook", "Animoji", "CallHistoryDB", "CallHistoryTransactions", "CloudDocs", "CrashReporter", "DiskImages", "Dock", "FileProvider", "icdd", "iCloud", "Knowledge", "MobileSync", "networkserviceproxy", "SyncServices", "Accounts", "ControlCenter", "DifferentialPrivacy", "FaceTime", "Quick Look", "SpeechRecognitionCore", "Spotlight", "TrustedPeersHelper", "AppStore", "Mail", "Safari", "Photos", "Siri", "homed", "identityservicesd", "locationaccessstored", "videosubscriptionsd", "GeoServices", "CloudKit", "FamilyCircle", "familycircled", "PassKit", "GameKit", "SiriTTS", "askpermissiond", "tipsd", "contactsd", "homeenergyd", "icloudmailagent", "assistant_service"].map { $0.lowercased() })
+    private static let genericNames: Set<String> = ["caches", "logs", "tmp", "temp", "crashpad", "crashreporter"]
     private static let dataLike = ["mysql", "postgres", "mongo", "redis", "sqlite", "database", "backup", "save", "mobilesync", "keychain"]
 
     public static func ownerBundleID(folder name: String, in parent: String, fs: DiskFS) -> String? {
@@ -40,7 +41,7 @@ public enum LeftoverDetector {
 
     private static let evidencePlaces: Set<String> = ["Preferences", "Saved Application State", "Containers"]
 
-    private static func isApple(_ id: String) -> Bool {
+    static func isApple(_ id: String) -> Bool {
         let lower = id.lowercased()
         let parts = lower.split(separator: ".")
         return lower.hasPrefix("systemgroup.") || lower.hasPrefix("is.workflow")
@@ -80,7 +81,8 @@ public enum LeftoverDetector {
                 let path = parent + "/" + name
                 if let id = ownerBundleID(folder: name, in: parent, fs: fs) {
                     guard !isApple(id), !installed(id, apps: apps) else { continue }
-                    leftovers[id, default: Group(title: String(id.split(separator: ".")[2]))].add(path, parent: place, bytes: fs.size(path))
+                    let component = id.split(separator: ".")[2]
+                    leftovers[id, default: Group(title: component.prefix(1).uppercased() + component.dropFirst())].add(path, parent: place, bytes: fs.size(path))
                 } else if maybePlaces.contains(place), isMaybe(name, path: path, fs: fs, apps: apps) {
                     maybes[AppNameMatch.normalize(name), default: Group(title: name)].add(path, parent: place, bytes: fs.size(path))
                 }
@@ -89,7 +91,11 @@ public enum LeftoverDetector {
         let confident = leftovers.compactMap { id, group -> DiskItem? in
             guard !evidencePlaces.isDisjoint(with: group.parents) else { return nil }
             let title = fs.plistString(home + "/Library/Preferences/" + id + ".plist", key: "CFBundleName") ?? group.title
-            return item(group, id: "leftover:" + id, title: title, category: .leftover)
+            let names = id.split(separator: ".").dropFirst().map(String.init) + [title]
+            guard !names.contains(where: apps.isKnownTool) else { return nil }
+            let children = group.paths.filter { !$0.hasPrefix(home + "/Library/HTTPStorages/") }.flatMap { fs.list($0) ?? [] }
+            guard !(names + children).contains(where: isDataLike) else { return nil }
+            return item(group, id: "leftover:" + id, title: title, category: .leftover, owner: id)
         }
         let maybe = maybes.compactMap { key, group in item(group, id: "maybe:" + key, title: group.title, category: .maybeLeftover) }
         return confident.sorted { $0.bytes > $1.bytes } + maybe.sorted { $0.bytes > $1.bytes }
@@ -98,13 +104,18 @@ public enum LeftoverDetector {
     private static func isMaybe(_ name: String, path: String, fs: DiskFS, apps: AppIndex) -> Bool {
         let lower = name.lowercased()
         return fs.list(path) != nil && !name.hasPrefix(".") && !lower.hasPrefix("default.store") && !(name == lower && name.hasSuffix("d"))
-            && !lower.contains("apple") && !appleNames.contains(lower)
-            && !dataLike.contains { lower.contains($0) } && apps.appPath(matchingName: name) == nil && !apps.isKnownTool(name)
+            && !lower.contains("apple") && !appleNames.contains(lower) && !genericNames.contains(lower)
+            && !isDataLike(name) && apps.appPath(matchingName: name) == nil && !apps.isKnownTool(name)
     }
 
-    private static func item(_ group: Group, id: String, title: String, category: DiskCategory) -> DiskItem? {
+    private static func isDataLike(_ name: String) -> Bool {
+        let lower = name.lowercased()
+        return dataLike.contains { lower.contains($0) }
+    }
+
+    private static func item(_ group: Group, id: String, title: String, category: DiskCategory, owner: String? = nil) -> DiskItem? {
         guard group.bytes >= DiskRules.minItemBytes else { return nil }
         return DiskItem(id: id, title: title, detail: group.parents.joined(separator: " · "), category: category, bytes: group.bytes,
-                        action: .trash(group.paths), checkedByDefault: false, revealPath: group.largest?.path)
+                        action: .trash(group.paths), checkedByDefault: false, ownerBundlePrefix: owner, revealPath: group.largest?.path)
     }
 }

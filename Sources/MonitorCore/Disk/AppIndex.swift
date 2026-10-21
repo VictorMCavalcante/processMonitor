@@ -18,6 +18,12 @@ public enum AppNameMatch {
         if a == b { return true }
         return min(a.count, b.count) >= 4 && (a.contains(b) || b.contains(a))
     }
+
+    public static func best(_ name: String, in names: [String: String]) -> String? {
+        let query = normalize(name)
+        if let exact = names[query] { return exact }
+        return names.filter { matches(query, $0.key) }.max { ($0.key.count, $1.key) < ($1.key.count, $0.key) }?.value
+    }
 }
 
 public final class SystemAppIndex: AppIndex {
@@ -60,10 +66,7 @@ public final class SystemAppIndex: AppIndex {
 
     public var bundleIDs: Set<String> { Set(bundles.keys) }
 
-    public func appPath(matchingName name: String) -> String? {
-        let query = AppNameMatch.normalize(name)
-        return names.first { AppNameMatch.matches(query, $0.key) }?.value
-    }
+    public func appPath(matchingName name: String) -> String? { AppNameMatch.best(name, in: names) }
 
     public func isKnownTool(_ name: String) -> Bool {
         let query = AppNameMatch.normalize(name)

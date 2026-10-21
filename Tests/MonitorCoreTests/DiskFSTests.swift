@@ -26,3 +26,14 @@ import Testing
     let item = DiskItem(id: "a", title: "a", detail: nil, category: .safe, bytes: 1)
     #expect(item.leaves == [item])
 }
+
+@Test func realSizeOfSymlinkRootIsZero() throws {
+    let dir = FileManager.default.temporaryDirectory.appendingPathComponent(UUID().uuidString)
+    let target = dir.appendingPathComponent("target")
+    try FileManager.default.createDirectory(at: target, withIntermediateDirectories: true)
+    defer { try? FileManager.default.removeItem(at: dir) }
+    try Data(count: 1_000_000).write(to: target.appendingPathComponent("a.bin"))
+    let link = dir.appendingPathComponent("link")
+    try FileManager.default.createSymbolicLink(at: link, withDestinationURL: target)
+    #expect(RealDiskFS().size(link.path) == 0)
+}

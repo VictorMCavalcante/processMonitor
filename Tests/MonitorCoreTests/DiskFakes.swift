@@ -5,6 +5,7 @@ final class FakeDiskFS: DiskFS {
     let files: [String: (bytes: UInt64, modified: Date)]
     let unreadable: Set<String>
     let plists: [String: [String: String]]
+    var listed: [String] = []
 
     init(files: [String: (bytes: UInt64, modified: Date)], unreadable: Set<String> = [], plists: [String: [String: String]] = [:]) {
         self.files = files
@@ -18,6 +19,7 @@ final class FakeDiskFS: DiskFS {
     }
 
     func list(_ path: String) -> [String]? {
+        listed.append(path)
         if unreadable.contains(path) { return nil }
         let prefix = path.hasSuffix("/") ? path : path + "/"
         let names = Set(under(path).map { String($0.dropFirst(prefix.count)).split(separator: "/").first.map(String.init) ?? "" })
@@ -48,7 +50,7 @@ final class FakeAppIndex: AppIndex {
 
     init(bundles: [String: String] = [:], names: [String: String] = [:], tools: Set<String> = []) {
         self.bundles = Dictionary(bundles.map { ($0.key.lowercased(), $0.value) }) { a, _ in a }
-        self.names = names
+        self.names = Dictionary(names.map { (AppNameMatch.normalize($0.key), $0.value) }) { a, _ in a }
         self.tools = tools
     }
 
@@ -56,10 +58,7 @@ final class FakeAppIndex: AppIndex {
 
     var bundleIDs: Set<String> { Set(bundles.keys) }
 
-    func appPath(matchingName name: String) -> String? {
-        let query = AppNameMatch.normalize(name)
-        return names.first { AppNameMatch.matches(query, AppNameMatch.normalize($0.key)) }?.value
-    }
+    func appPath(matchingName name: String) -> String? { AppNameMatch.best(name, in: names) }
 
     func isKnownTool(_ name: String) -> Bool {
         let query = AppNameMatch.normalize(name)

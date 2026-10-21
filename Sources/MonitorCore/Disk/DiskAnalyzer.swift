@@ -69,7 +69,7 @@ public enum DiskAnalyzer {
         let access = hasFullDiskAccess(fs: fs, home: home)
         let claimedFS = ClaimedFS(fs)
 
-        var safe = SafeCatalog.scan(fs: fs, home: home, runningBundleIDs: runningBundleIDs, busyPaths: busyPaths)
+        var safe = SafeCatalog.scan(fs: fs, home: home, runningBundleIDs: runningBundleIDs, busyPaths: busyPaths, skipProtectedHomeFolders: !access)
         claimedFS.claimed = safe.flatMap(\.leaves).flatMap(paths)
         if let docker {
             safe += [
@@ -124,6 +124,7 @@ public enum DiskAnalyzer {
                                           category: .appData, bytes: fs.size(path), revealPath: path))
                     continue
                 }
+                if place == "Application Support", LeftoverDetector.isApple(name) { continue }
                 guard let app = owner(name, parent: parent, place: place, fs: fs, apps: apps) else { continue }
                 totals[app, default: 0] += fs.size(path)
             }

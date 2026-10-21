@@ -202,7 +202,10 @@ struct MainWindow: View {
     private func confirmationText(_ action: PendingAction) -> String {
         switch action {
         case .cleanDisk(let items):
-            var lines = items.map(\.title) + ["", "Vai para a Lixeira. Esvazie a Lixeira para liberar o espaço."]
+            let projects = items.filter { $0.id.hasSuffix("/node_modules") }.count
+            var titles = items.filter { !$0.id.hasSuffix("/node_modules") }.map(\.title) + (projects > 0 ? ["node_modules · \(projects) projetos"] : [])
+            if titles.count > 8 { titles = titles.prefix(8) + ["e mais \(titles.count - 8)"] }
+            var lines = titles + ["", "Vai para a Lixeira. Esvazie a Lixeira para liberar o espaço."]
             if items.contains(where: { if case .docker = $0.action { true } else { false } }) {
                 lines.append("As imagens do Docker são apagadas na hora, sem Lixeira.")
             }

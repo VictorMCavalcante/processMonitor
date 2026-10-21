@@ -18,12 +18,14 @@ public enum SafeCatalog {
         Entry(title: "Xcode DerivedData", paths: ["Library/Developer/Xcode/DerivedData"], owner: "com.apple.dt.Xcode"),
         Entry(title: "JetBrains cache", paths: ["Library/Caches/JetBrains"], owner: "com.jetbrains"),
         Entry(title: "Gradle cache", paths: [".gradle/caches"]),
-        Entry(title: "Hugging Face models", paths: [".cache/huggingface"], warning: "baixar de novo é lento"),
+        Entry(title: "Hugging Face models", paths: [".cache/huggingface/hub", ".cache/huggingface/xet"], warning: "baixar de novo é lento"),
     ]
 
     private static let maxDepth = 6
+    private static let protectedHomeFolders: Set<String> = ["Desktop", "Documents", "Downloads", "Pictures", "Movies", "Music"]
+    private static let packageSuffixes = [".photoslibrary", ".musiclibrary", ".app", ".bundle", ".framework"]
 
-    public static func scan(fs: DiskFS, home: String, runningBundleIDs: Set<String>, busyPaths: [String]) -> [DiskItem] {
+    public static func scan(fs: DiskFS, home: String, runningBundleIDs: Set<String>, busyPaths: [String], skipProtectedHomeFolders: Bool) -> [DiskItem] {
         var items: [DiskItem] = []
         for entry in entries {
             let paths = entry.paths.map { home + "/" + $0 }.filter { fs.exists($0) }
@@ -35,18 +37,19 @@ public enum SafeCatalog {
                 action: .trash(paths),
                 checkedByDefault: entry.warning == nil && !running,
                 warning: running ? "feche o app primeiro" : entry.warning,
-                ownerBundlePrefix: running ? entry.owner : nil,
+                ownerBundlePrefix: entry.owner,
                 revealPath: first))
         }
-        if let group = nodeModules(fs: fs, home: home, busyPaths: busyPaths) { items.append(group) }
+        if let group = nodeModules(fs: fs, home: home, busyPaths: busyPaths, skipProtected: skipProtectedHomeFolders) { items.append(group) }
         return items
     }
 
-    private static func nodeModules(fs: DiskFS, home: String, busyPaths: [String]) -> DiskItem? {
+    private static func nodeModules(fs: DiskFS, home: String, busyPaths: [String], skipProtected: Bool) -> DiskItem? {
         var found: [String] = []
         func walk(_ dir: String, _ depth: Int) {
             guard depth <= maxDepth, let names = fs.list(dir) else { return }
-            for name in names.sorted() where !name.hasPrefix(".") && name != "Library" {
+            for name in names.sorted() where !name.hasPrefix(".") && name != "Library" && !packageSuffixes.contains(where: name.hasSuffix)
+                && !(skipProtected && dir == home && protectedHomeFolders.contains(name)) {
                 let path = dir + "/" + name
                 if name == "node_modules" {
                     if fs.exists(dir + "/package.json") { found.append(path) }

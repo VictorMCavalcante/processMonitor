@@ -34,6 +34,7 @@ public final class RealDiskFS: DiskFS {
     public func size(_ path: String) -> UInt64 {
         let keys: [URLResourceKey] = [.totalFileAllocatedSizeKey, .fileResourceIdentifierKey, .isSymbolicLinkKey]
         let root = URL(fileURLWithPath: path)
+        if (try? root.resourceValues(forKeys: [.isSymbolicLinkKey]))?.isSymbolicLink == true { return 0 }
         var total: UInt64 = 0
         func add(_ url: URL) {
             guard let v = try? url.resourceValues(forKeys: Set(keys)), v.isSymbolicLink != true else { return }

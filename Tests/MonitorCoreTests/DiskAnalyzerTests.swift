@@ -50,3 +50,24 @@ private let mb: UInt64 = 1_048_576
     #expect(!r.items.contains { $0.id == "app:/Applications/Tiny.app" })
     #expect(r.items.map(\.id) == ["JetBrains cache", "wallpaper", "app:/Applications/Visual Studio Code.app"])
 }
+
+@Test func noAccessNeverListsProtectedContainers() {
+    let fs = FakeDiskFS(files: [
+        "/h/Library/Containers/com.gone.app/Data/a": (900 * mb, .distantPast),
+        "/h/Library/Group Containers/ABCDE12345.com.gone.app/b": (900 * mb, .distantPast),
+        "/h/Library/Application Support/x/y": (1, .distantPast),
+    ])
+    let r = DiskAnalyzer.analyze(fs: fs, home: "/h", apps: FakeAppIndex(), volume: (10_000 * mb, 1_000 * mb), docker: nil, runningBundleIDs: [], busyPaths: [], now: .distantPast)
+    #expect(r.protectedSkipped)
+    #expect(!fs.listed.contains { $0.hasPrefix("/h/Library/Containers") || $0.hasPrefix("/h/Library/Group Containers") })
+}
+
+@Test func appleAppSupportFoldersAreNotAppData() {
+    let fs = FakeDiskFS(files: [
+        "/h/Library/Application Support/com.apple.TCC/x": (1, .distantPast),
+        "/h/Library/Application Support/com.apple.Music/m": (3_000 * mb, .distantPast),
+    ])
+    let apps = FakeAppIndex(bundles: ["com.apple.Music": "/System/Applications/Music.app"])
+    let r = DiskAnalyzer.analyze(fs: fs, home: "/h", apps: apps, volume: (100_000 * mb, 1_000 * mb), docker: nil, runningBundleIDs: [], busyPaths: [], now: .distantPast)
+    #expect(!r.items.contains { $0.category == .appData })
+}

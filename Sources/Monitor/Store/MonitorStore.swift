@@ -30,6 +30,7 @@ final class MonitorStore {
     var peaks: [PeakEpisode] = []
     var disk: DiskReport?
     var diskScanning = false
+    var diskCleaning = false
     @ObservationIgnored private var runawayTracker = RunawayTracker()
     @ObservationIgnored private var peakRecorder: PeakRecorder
     @ObservationIgnored private let peakStore = PeakStore(url: PeakStore.defaultURL)
@@ -118,6 +119,9 @@ final class MonitorStore {
     }
 
     func cleanDisk(_ leaves: [DiskItem]) async -> CleanResult {
+        guard !diskCleaning else { return CleanResult() }
+        diskCleaning = true
+        defer { diskCleaning = false }
         let running = Set(NSWorkspace.shared.runningApplications.compactMap(\.bundleIdentifier))
         let client = docker
         let result = await Task.detached(priority: .utility) {
@@ -126,11 +130,12 @@ final class MonitorStore {
                               trash: { try FileManager.default.trashItem(at: URL(fileURLWithPath: $0), resultingItemURL: nil) },
                               docker: { client.prune($0) })
         }.value
+        while diskScanning { try? await Task.sleep(for: .milliseconds(100)) }
         await analyzeDisk()
-        var parts = ["\(Format.bytes(result.trashedBytes)) na Lixeira"]
-        if result.dockerBytes > 0 { parts[0] += " · \(Format.bytes(result.dockerBytes)) do Docker apagados" }
-        parts += result.failures
-        lastMessage = parts.joined(separator: "; ")
+        var summary: [String] = []
+        if result.trashedBytes > 0 || result.dockerBytes == 0 { summary.append("\(Format.bytes(result.trashedBytes)) na Lixeira") }
+        if result.dockerBytes > 0 { summary.append("\(Format.bytes(result.dockerBytes)) do Docker apagados") }
+        lastMessage = ([summary.joined(separator: " · ")] + result.failures).joined(separator: "; ")
         return result
     }
 

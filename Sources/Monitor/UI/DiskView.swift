@@ -8,6 +8,8 @@ struct DiskView: View {
     @State private var selected: Set<String> = []
     @State private var expanded: Set<String> = []
 
+    private var busy: Bool { store.diskScanning || store.diskCleaning }
+
     var body: some View {
         VStack(spacing: 10) {
             header
@@ -36,28 +38,29 @@ struct DiskView: View {
     private var header: some View {
         HStack(spacing: 8) {
             Spacer()
-            if store.diskScanning { ProgressView().controlSize(.small) }
+            if busy { ProgressView().controlSize(.small) }
             if let d = store.disk {
                 Text("analisado há \(Format.age(since: d.scannedAt, now: store.now))").font(.system(size: 11)).foregroundStyle(Theme.muted)
             }
             Button { Task { await store.analyzeDisk() } } label: { Image(systemName: "arrow.clockwise") }
-                .buttonStyle(.plain).foregroundStyle(Theme.muted).disabled(store.diskScanning).help("Analisar de novo")
+                .buttonStyle(.plain).foregroundStyle(Theme.muted).disabled(busy).help("Analisar de novo")
         }
     }
 
     private func cards(_ d: DiskReport, _ proxy: ScrollViewProxy) -> some View {
         let safe = d.items.filter { $0.category == .safe }.flatMap(\.leaves).filter(\.checkedByDefault)
-        let removed = d.items.filter { $0.category == .leftover || $0.category == .maybeLeftover }.count
+        let removed = d.items.filter { $0.category == .leftover }.count
+        let maybe = d.items.filter { $0.category == .maybeLeftover }.count
         let data = d.items.filter { $0.category == .appData }
         return HStack(spacing: 10) {
             card("Livre", Format.bytes(d.free), Theme.text, target: nil, proxy) {
                 Text("de \(Format.bytes(d.total))").font(.system(size: 11)).foregroundStyle(Theme.muted)
             }
             card("Seguro limpar", Format.bytes(d.bytes(.safe)), Theme.ok, target: "safe", proxy) {
-                Button("Limpar o seguro…") { onClean(safe) }.buttonStyle(PillButton(color: Theme.ok)).disabled(safe.isEmpty)
+                Button("Limpar o seguro…") { onClean(safe) }.buttonStyle(PillButton(color: Theme.ok)).disabled(safe.isEmpty || busy)
             }
             card("Sobras de apps", Format.bytes(d.bytes(.leftover)), Theme.warn, target: "leftover", proxy) {
-                Text(removed == 1 ? "1 app removido" : "\(removed) apps removidos").font(.system(size: 11)).foregroundStyle(Theme.muted)
+                Text((removed == 1 ? "1 app removido" : "\(removed) apps removidos") + (maybe > 0 ? " + \(maybe) a conferir" : "")).font(.system(size: 11)).foregroundStyle(Theme.muted)
             }
             card("Dados de apps", Format.bytes(d.bytes(.appData)), Theme.accent, target: "appData", proxy) {
                 Text(data.prefix(2).map(\.title).joined(separator: ", ") + (data.count > 2 ? "…" : ""))
@@ -193,13 +196,14 @@ struct DiskView: View {
     private func footer(_ d: DiskReport) -> some View {
         let marked = d.items.flatMap(\.leaves).filter { selected.contains($0.id) }
         let total = marked.reduce(UInt64(0)) { $0 + $1.bytes }
+        let docker = marked.contains { if case .docker = $0.action { true } else { false } }
         return HStack {
             (Text("\(marked.count) \(marked.count == 1 ? "item marcado" : "itens marcados") · ")
                 + Text(Format.bytes(total)).foregroundColor(Theme.text).bold()
-                + Text(" · vai para a Lixeira"))
+                + Text(docker ? " · vai para a Lixeira · Docker apagado na hora" : " · vai para a Lixeira"))
                 .font(.system(size: 11)).foregroundStyle(Theme.muted)
             Spacer()
-            Button("Limpar marcados…") { onClean(marked) }.buttonStyle(PillButton(color: Theme.ok)).disabled(marked.isEmpty)
+            Button("Limpar marcados…") { onClean(marked) }.buttonStyle(PillButton(color: Theme.ok)).disabled(marked.isEmpty || busy)
         }
         .padding(.top, 10)
         .overlay(alignment: .top) { Theme.line.frame(height: 1) }

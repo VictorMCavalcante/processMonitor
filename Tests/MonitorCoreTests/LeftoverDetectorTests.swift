@@ -23,6 +23,7 @@ private let mb: UInt64 = 1_048_576
     let items = LeftoverDetector.detect(fs: fs, home: "/h", apps: FakeAppIndex(bundles: ["com.tinyspeck.slackmacgap": "/Applications/Slack.app"]), includeProtected: false)
     #expect(items.map(\.id) == ["leftover:com.openai.atlas"])
     #expect(items[0].bytes == 858 * mb && items[0].detail == "Application Support · Caches · Preferences" && items[0].checkedByDefault == false)
+    #expect(items[0].title == "Atlas" && items[0].ownerBundlePrefix == "com.openai.atlas")
 }
 
 @Test func maybeLeftoverExcludesDataInstalledToolsAndUnreadable() {
@@ -117,4 +118,39 @@ private let mb: UInt64 = 1_048_576
 @Test func httpStoragesCookiesStripSuffix() {
     let fs = FakeDiskFS(files: [:])
     #expect(LeftoverDetector.ownerBundleID(folder: "com.gone.app.binarycookies", in: "/h/Library/HTTPStorages", fs: fs) == "com.gone.app")
+}
+
+@Test func confidentLeftoverSkipsKnownToolsAndDataLike() {
+    let fs = FakeDiskFS(files: [
+        "/h/Library/Application Support/com.ollama.ollama/m": (900 * mb, .distantPast),
+        "/h/Library/Preferences/com.ollama.ollama.plist": (1, .distantPast),
+        "/h/Library/Application Support/com.oracle.mysqlworkbench/w": (900 * mb, .distantPast),
+        "/h/Library/Preferences/com.oracle.mysqlworkbench.plist": (1, .distantPast),
+        "/h/Library/Application Support/com.gone.game/Saves/s": (900 * mb, .distantPast),
+        "/h/Library/Preferences/com.gone.game.plist": (1, .distantPast),
+        "/h/Library/Application Support/com.gone.titled/t": (900 * mb, .distantPast),
+        "/h/Library/Preferences/com.gone.titled.plist": (1, .distantPast),
+        "/h/Library/Application Support/com.gone.kept/k": (900 * mb, .distantPast),
+        "/h/Library/Preferences/com.gone.kept.plist": (1, .distantPast),
+        "/h/Library/HTTPStorages/com.gone.kept/httpstorages.sqlite": (1, .distantPast),
+    ], plists: ["/h/Library/Preferences/com.gone.titled.plist": ["CFBundleName": "Postgres Helper"]])
+    let items = LeftoverDetector.detect(fs: fs, home: "/h", apps: FakeAppIndex(tools: ["ollama"]), includeProtected: false)
+    #expect(items.map(\.id) == ["leftover:com.gone.kept"])
+}
+
+@Test func genericFolderNamesAreNotMaybe() {
+    let fs = FakeDiskFS(files: [
+        "/h/Library/Application Support/Caches/a": (300 * mb, .distantPast),
+        "/h/Library/Application Support/tmp/a": (300 * mb, .distantPast),
+        "/h/Library/Caches/Crashpad/a": (300 * mb, .distantPast),
+        "/h/Library/Logs/TEMP/a": (300 * mb, .distantPast),
+    ])
+    #expect(LeftoverDetector.detect(fs: fs, home: "/h", apps: FakeAppIndex(), includeProtected: false).isEmpty)
+}
+
+@Test func nameMatchPrefersExactThenLongest() {
+    let apps = FakeAppIndex(names: ["chrome": "/A/Chrome.app", "Google Chrome": "/A/Google Chrome.app", "googlechromebeta": "/A/Beta.app"])
+    #expect(apps.appPath(matchingName: "Chrome") == "/A/Chrome.app")
+    #expect(apps.appPath(matchingName: "Google Chrome") == "/A/Google Chrome.app")
+    #expect(apps.appPath(matchingName: "GoogleChromeBetaHelper") == "/A/Beta.app")
 }
