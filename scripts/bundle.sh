@@ -13,3 +13,4 @@ pkill -x Monitor 2>/dev/null || true
 rm -rf "$HOME/Applications/Monitor.app"
 cp -R "$APP" "$HOME/Applications/Monitor.app"
 echo "Instalado em $HOME/Applications/Monitor.app"
+open "$HOME/Applications/Monitor.app"

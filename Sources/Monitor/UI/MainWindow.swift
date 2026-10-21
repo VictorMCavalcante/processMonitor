@@ -6,18 +6,21 @@ enum WindowTab: Hashable {
     case ports
     case docker
     case peaks
+    case disk
 }
 
 enum PendingAction {
     case close(ProcessGroup, TerminationMode, dockerContainers: Int?)
     case stopContainer(id: String, name: String)
     case restart(ProcessGroup, dockerContainers: Int)
+    case cleanDisk([DiskItem])
 
     var title: String {
         switch self {
         case .close(let g, _, _): "Fechar \(g.title)?"
         case .stopContainer(_, let name): "Parar o container \(name)?"
         case .restart(let g, _): "Reiniciar \(g.title)?"
+        case .cleanDisk(let items): "Limpar \(Format.bytes(items.reduce(0) { $0 + $1.bytes }))?"
         }
     }
 }
@@ -83,6 +86,7 @@ struct MainWindow: View {
             Picker("", selection: Binding(get: { tab }, set: { new in
                 tab = new
                 if case .processes(let m) = new { store.mode = m }
+                if new == .disk, store.disk == nil { Task { await store.analyzeDisk() } }
             })) {
                 Text("Por app").tag(WindowTab.processes(.byApp))
                 Text("Por projeto").tag(WindowTab.processes(.byProject))
@@ -90,9 +94,10 @@ struct MainWindow: View {
                 Text("Portas").tag(WindowTab.ports)
                 if store.dockerRunning { Text("Docker").tag(WindowTab.docker) }
                 Text("Picos").tag(WindowTab.peaks)
+                Text("Disco").tag(WindowTab.disk)
             }
             .pickerStyle(.segmented)
-            .frame(width: store.dockerRunning ? 520 : 440)
+            .frame(width: store.dockerRunning ? 600 : 520)
             Button { showPreferences.toggle() } label: { Image(systemName: "gearshape") }
                 .buttonStyle(.plain)
                 .foregroundStyle(Theme.muted)
@@ -127,6 +132,8 @@ struct MainWindow: View {
             DockerView(store: store) { c in pending = .stopContainer(id: c.id, name: c.name) }
         case .peaks:
             PeaksView(store: store)
+        case .disk:
+            DiskView(store: store) { pending = .cleanDisk($0) }
         }
     }
 
@@ -135,6 +142,7 @@ struct MainWindow: View {
         case .close(_, let mode, _): mode == .force ? "Forçar" : "Fechar"
         case .stopContainer: "Parar"
         case .restart: "Reiniciar"
+        case .cleanDisk: "Limpar"
         case nil: "OK"
         }
     }
@@ -147,6 +155,8 @@ struct MainWindow: View {
             Task { _ = await store.stopContainer(id) }
         case .restart(let g, _):
             Task { _ = await store.restart(g) }
+        case .cleanDisk(let items):
+            Task { _ = await store.cleanDisk(items) }
         }
     }
 
@@ -191,6 +201,15 @@ struct MainWindow: View {
 
     private func confirmationText(_ action: PendingAction) -> String {
         switch action {
+        case .cleanDisk(let items):
+            let projects = items.filter { $0.id.hasSuffix("/node_modules") }.count
+            var titles = items.filter { !$0.id.hasSuffix("/node_modules") }.map(\.title) + (projects > 0 ? ["node_modules · \(projects) projetos"] : [])
+            if titles.count > 8 { titles = titles.prefix(8) + ["e mais \(titles.count - 8)"] }
+            var lines = titles + ["", "Vai para a Lixeira. Esvazie a Lixeira para liberar o espaço."]
+            if items.contains(where: { if case .docker = $0.action { true } else { false } }) {
+                lines.append("As imagens do Docker são apagadas na hora, sem Lixeira.")
+            }
+            return lines.joined(separator: "\n")
         case .stopContainer(_, let name):
             return "O container \(name) será parado. Os outros containers continuam rodando."
         case .restart(_, let containers):

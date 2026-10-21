@@ -60,6 +60,61 @@ public struct DockerClient: Sendable {
         return result.status == 0 ? nil : "Não foi possível parar o container."
     }
 
+    public func diskUsage() -> DockerDiskUsage? {
+        guard let df = command(["system", "df", "--format", "{{json .}}"], timeout: 30),
+              let dangling = command(["images", "-f", "dangling=true", "--format", "{{json .}}"], timeout: 30),
+              let all = command(["images", "--format", "{{json .}}"], timeout: 30),
+              let ps = command(["ps", "-a", "--format", "{{.ImageID}} {{.Image}}"], timeout: 30) else { return nil }
+        let buildCache = df.split(separator: "\n").compactMap(Self.json)
+            .filter { $0["Type"] == "Build Cache" }
+            .map { Self.parseDecimalSize(String(($0["Reclaimable"] ?? "").split(separator: " ").first ?? "")) }
+            .reduce(0, +)
+        let danglingImages = dangling.split(separator: "\n").compactMap(Self.json)
+        let danglingIDs = Set(danglingImages.compactMap { $0["ID"].map(Self.shortID) })
+        var usedIDs: [String] = []
+        var usedNames: Set<String> = []
+        for line in ps.split(separator: "\n") {
+            let parts = line.split(separator: " ").map(String.init)
+            if let id = parts.first { usedIDs.append(Self.shortID(id)) }
+            if parts.count > 1 { usedNames.insert(parts[1].contains(":") ? parts[1] : parts[1] + ":latest") }
+        }
+        var order: [String] = []
+        var byID: [String: (size: UInt64, names: [String])] = [:]
+        for image in all.split(separator: "\n").compactMap(Self.json) {
+            guard let raw = image["ID"] else { continue }
+            let id = Self.shortID(raw)
+            guard !danglingIDs.contains(raw), !danglingIDs.contains(id) else { continue }
+            if byID[id] == nil { order.append(id) }
+            var entry = byID[id] ?? (Self.parseDecimalSize(image["Size"] ?? ""), [])
+            entry.names.append("\(image["Repository"] ?? ""):\(image["Tag"] ?? "")")
+            byID[id] = entry
+        }
+        var unused: UInt64 = 0
+        var names: [String] = []
+        for id in order {
+            guard let entry = byID[id] else { continue }
+            let inUse = usedIDs.contains { !$0.isEmpty && (id.hasPrefix($0) || $0.hasPrefix(id)) } || entry.names.contains { usedNames.contains($0) }
+            guard !inUse else { continue }
+            unused += entry.size
+            names += entry.names
+        }
+        let danglingSize = danglingImages.map { Self.parseDecimalSize($0["Size"] ?? "") }.reduce(0, +)
+        return DockerDiskUsage(danglingAndBuildCache: danglingSize + buildCache, unusedImages: unused, unusedImageNames: names)
+    }
+
+    public func prune(_ kind: DockerPrune) -> String? {
+        guard let path = executable else { return "Docker não encontrado." }
+        let steps: [[String]] = switch kind {
+        case .danglingAndBuildCache: [["image", "prune", "-f"], ["builder", "prune", "-a", "-f"]]
+        case .unusedImages: [["image", "prune", "-a", "-f"]]
+        }
+        for args in steps {
+            guard let result = runner.run(path, args, timeout: 120) else { return "O Docker não respondeu a tempo." }
+            if result.status != 0 { return "Não foi possível limpar o Docker." }
+        }
+        return nil
+    }
+
     private var executable: String? {
         paths.first { FileManager.default.isExecutableFile(atPath: $0) }
     }
@@ -93,6 +148,20 @@ public struct DockerClient: Sendable {
     public static func parseMemory(_ s: String) -> UInt64 {
         let left = s.split(separator: "/").first.map { $0.trimmingCharacters(in: .whitespaces) } ?? ""
         let units: [(String, Double)] = [("GiB", 1_073_741_824), ("MiB", 1_048_576), ("KiB", 1024), ("GB", 1e9), ("MB", 1e6), ("kB", 1e3), ("B", 1)]
+        for (suffix, factor) in units where left.hasSuffix(suffix) {
+            guard let value = Double(left.dropLast(suffix.count)) else { return 0 }
+            return UInt64(value * factor)
+        }
+        return 0
+    }
+
+    private static func shortID(_ id: String) -> String {
+        id.hasPrefix("sha256:") ? String(id.dropFirst(7)) : id
+    }
+
+    public static func parseDecimalSize(_ s: String) -> UInt64 {
+        let left = s.split(separator: " ").first.map(String.init) ?? ""
+        let units: [(String, Double)] = [("TB", 1e12), ("GB", 1e9), ("MB", 1e6), ("kB", 1e3), ("B", 1)]
         for (suffix, factor) in units where left.hasSuffix(suffix) {
             guard let value = Double(left.dropLast(suffix.count)) else { return 0 }
             return UInt64(value * factor)
