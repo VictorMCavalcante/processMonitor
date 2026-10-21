@@ -59,6 +59,7 @@ struct MainWindow: View {
         .background(Theme.bg)
         .foregroundStyle(Theme.text)
         .preferredColorScheme(.dark)
+        .tint(Theme.brand)
         .frame(minWidth: 1100, idealWidth: 1240, minHeight: 720, idealHeight: 820)
         .confirmationDialog(pending?.title ?? "", isPresented: Binding(get: { pending != nil }, set: { if !$0 { pending = nil } })) {
             Button(confirmLabel, role: .destructive) {
@@ -81,7 +82,7 @@ struct MainWindow: View {
                 TextField("Buscar processo, projeto, porta…", text: $store.search).textFieldStyle(.plain)
             }
             .padding(.horizontal, 10).padding(.vertical, 6)
-            .background(RoundedRectangle(cornerRadius: 7).fill(Color(hex: 0x14151A)))
+            .background(RoundedRectangle(cornerRadius: 7).fill(Theme.field))
             .overlay(RoundedRectangle(cornerRadius: 7).stroke(Theme.line))
             Picker("", selection: Binding(get: { tab }, set: { new in
                 tab = new
@@ -106,7 +107,7 @@ struct MainWindow: View {
         }
         .font(.system(size: 12))
         .padding(.horizontal, 14).padding(.vertical, 10)
-        .background(LinearGradient(colors: [Color(hex: 0x202127), Color(hex: 0x1B1C21)], startPoint: .top, endPoint: .bottom))
+        .background(LinearGradient(colors: [Theme.barTop, Theme.barBottom], startPoint: .top, endPoint: .bottom))
         .overlay(alignment: .bottom) { Theme.line.frame(height: 1) }
     }
 

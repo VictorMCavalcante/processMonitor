@@ -1,0 +1,16 @@
+<svg xmlns="http://www.w3.org/2000/svg" width="300" height="72" viewBox="0 0 300 72">
+  <defs>
+    <linearGradient id="g" x1="0" y1="0" x2="0" y2="1">
+      <stop offset="0" stop-color="#7426F0"/>
+      <stop offset="1" stop-color="#9A55FF"/>
+    </linearGradient>
+  </defs>
+  <g transform="scale(0.75)">
+    <rect width="96" height="96" rx="22" fill="url(#g)"/>
+    <path d="M18 54 H34 L41 36 L52 66 L59 46 H78" fill="none" stroke="#fff" stroke-width="6" stroke-linecap="round" stroke-linejoin="round"/>
+    <g stroke="#D9C7FF" stroke-width="3" stroke-linecap="round" opacity=".85">
+      <line x1="18" y1="74" x2="18" y2="80"/><line x1="33" y1="76" x2="33" y2="80"/><line x1="48" y1="74" x2="48" y2="80"/><line x1="63" y1="76" x2="63" y2="80"/><line x1="78" y1="74" x2="78" y2="80"/>
+    </g>
+  </g>
+  <text x="90" y="49" font-family="-apple-system, 'SF Pro Display', 'Inter', 'Helvetica Neue', Arial, sans-serif" font-size="40" font-weight="600" letter-spacing="-0.8" fill="#8B3DFF">vernio</text>
+</svg>

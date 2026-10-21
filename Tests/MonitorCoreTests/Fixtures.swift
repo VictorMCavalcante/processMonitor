@@ -39,9 +39,30 @@ extension ProcessRow {
     }
 }
 
+private final class EphemeralSuites: @unchecked Sendable {
+    static let shared = EphemeralSuites()
+    private let lock = NSLock()
+    private var names: [String] = []
+
+    private init() {
+        atexit {
+            for name in EphemeralSuites.shared.drain() {
+                UserDefaults.standard.removePersistentDomain(forName: name)
+                CFPreferencesAppSynchronize(name as CFString)
+                try? FileManager.default.removeItem(atPath: NSHomeDirectory() + "/Library/Preferences/\(name).plist")
+            }
+        }
+    }
+
+    func add(_ name: String) { lock.withLock { names.append(name) } }
+    func drain() -> [String] { lock.withLock { defer { names = [] }; return names } }
+}
+
 extension UserDefaults {
     static func ephemeral() -> UserDefaults {
-        UserDefaults(suiteName: "monitor-test-\(UUID().uuidString)")!
+        let name = "monitor-test-\(UUID().uuidString)"
+        EphemeralSuites.shared.add(name)
+        return UserDefaults(suiteName: name)!
     }
 }
 
