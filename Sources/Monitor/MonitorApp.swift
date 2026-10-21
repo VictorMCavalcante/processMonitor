@@ -27,6 +27,7 @@ struct MonitorApp: App {
                 .onDisappear { store.windowVisible = false }
         }
         .defaultSize(width: 1240, height: 820)
+        .windowToolbarStyle(.unified)
     }
 
     @MainActor
