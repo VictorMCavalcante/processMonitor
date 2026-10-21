@@ -31,6 +31,13 @@ final class MonitorStore {
     var disk: DiskReport?
     var diskScanning = false
     var diskCleaning = false
+    var diskProgress: DiskProgress?
+    var diskFresh = false
+    var canClean: Bool { diskFresh && !diskScanning && !diskCleaning }
+    @ObservationIgnored private let diskStore = DiskReportStore(url: DiskReportStore.defaultURL)
+    @ObservationIgnored private var diskLoaded = false
+    @ObservationIgnored private var diskScan = 0
+    @ObservationIgnored private var diskStages: Set<String> = []
     @ObservationIgnored private var runawayTracker = RunawayTracker()
     @ObservationIgnored private var peakRecorder: PeakRecorder
     @ObservationIgnored private let peakStore = PeakStore(url: PeakStore.defaultURL)
@@ -103,19 +110,62 @@ final class MonitorStore {
         return message
     }
 
+    func openDiskTab() async {
+        if !diskLoaded {
+            diskLoaded = true
+            let store = diskStore
+            let saved = await Task.detached(priority: .utility) { store.load() }.value
+            if disk == nil { disk = saved }
+        }
+        if disk.map({ DiskReportStore.isStale($0, now: Date()) }) ?? true { await analyzeDisk() }
+    }
+
     func analyzeDisk() async {
         guard !diskScanning else { return }
         diskScanning = true
+        diskScan += 1
+        diskStages = []
+        let scan = diskScan
         let running = Set(NSWorkspace.shared.runningApplications.compactMap(\.bundleIdentifier))
         let busyKinds: Set<ProcessKind> = [.devServer, .claudeSession, .shell]
         let busy = rows.filter { busyKinds.contains($0.identified.kind) }.compactMap(\.snapshot.cwd)
         let client = dockerRunning ? docker : nil
-        disk = await Task.detached(priority: .utility) {
+        let store = diskStore
+        let progress: @Sendable (DiskProgress) -> Void = { p in Task { @MainActor [weak self] in self?.diskStep(p, scan: scan) } }
+        let partial: @Sendable (DiskReport) -> Void = { r in
+            Task { @MainActor [weak self] in
+                guard let self, self.diskScan == scan, self.diskScanning else { return }
+                self.disk = r
+            }
+        }
+        let report = await Task.detached(priority: .utility) {
             let home = NSHomeDirectory()
-            return DiskAnalyzer.analyze(fs: RealDiskFS(), home: home, apps: SystemAppIndex(home: home), volume: DiskAnalyzer.volume(home: home),
-                                        docker: client?.diskUsage(), runningBundleIDs: running, busyPaths: busy, now: Date())
+            progress(DiskProgress(stage: "Listando apps instalados"))
+            let apps = SystemAppIndex(home: home)
+            let usage = client.flatMap { c -> DockerDiskUsage? in
+                progress(DiskProgress(stage: "Medindo Docker"))
+                return c.diskUsage()
+            }
+            let report = DiskAnalyzer.analyze(fs: RealDiskFS(), home: home, apps: apps, volume: DiskAnalyzer.volume(home: home),
+                                              docker: usage, runningBundleIDs: running, busyPaths: busy, now: Date(),
+                                              progress: progress, partial: partial)
+            store.save(report)
+            return report
         }.value
+        disk = report
+        diskFresh = true
+        diskProgress = nil
         diskScanning = false
+    }
+
+    private func diskStep(_ p: DiskProgress, scan: Int) {
+        guard scan == diskScan, diskScanning else { return }
+        if let current = diskProgress, current.stage == p.stage {
+            if let a = current.done, let b = p.done, b < a { return }
+        } else if !diskStages.insert(p.stage).inserted {
+            return
+        }
+        diskProgress = p
     }
 
     func cleanDisk(_ leaves: [DiskItem]) async -> CleanResult {

@@ -7,6 +7,7 @@ struct DiskView: View {
     let onClean: ([DiskItem]) -> Void
     @State private var selected: Set<String> = []
     @State private var expanded: Set<String> = []
+    @State private var known: Set<String> = []
 
     private var busy: Bool { store.diskScanning || store.diskCleaning }
 
@@ -31,7 +32,11 @@ struct DiskView: View {
         }
         .font(.system(size: 12.5))
         .onChange(of: store.disk, initial: true) { _, d in
-            selected = Set((d?.items ?? []).flatMap(\.leaves).filter(\.checkedByDefault).map(\.id))
+            let leaves = (d?.items ?? []).flatMap(\.leaves)
+            let ids = Set(leaves.map(\.id))
+            let fresh = leaves.filter { $0.checkedByDefault && !known.contains($0.id) }.map(\.id)
+            selected = (store.diskScanning ? selected : selected.intersection(ids)).union(fresh)
+            known = store.diskScanning ? known.union(ids) : ids
         }
     }
 
@@ -39,8 +44,16 @@ struct DiskView: View {
         HStack(spacing: 8) {
             Spacer()
             if busy { ProgressView().controlSize(.small) }
-            if let d = store.disk {
-                Text("analisado há \(Format.age(since: d.scannedAt, now: store.now))").font(.system(size: 11)).foregroundStyle(Theme.muted)
+            if let p = store.diskProgress {
+                VStack(alignment: .trailing, spacing: 3) {
+                    Text(p.stage + (p.total.map { "… \(p.done ?? 0) de \($0)" } ?? "…")).font(.system(size: 11)).foregroundStyle(Theme.muted).monospacedDigit()
+                    if let total = p.total {
+                        ProgressView(value: Double(min(p.done ?? 0, total)), total: Double(max(total, 1))).progressViewStyle(.linear).controlSize(.small).frame(width: 160, height: 2)
+                    }
+                }
+            } else if let d = store.disk {
+                let age = Format.age(since: d.scannedAt, now: store.now)
+                Text(store.diskFresh ? "analisado há \(age)" : "de \(age) atrás").font(.system(size: 11)).foregroundStyle(Theme.muted)
             }
             Button { Task { await store.analyzeDisk() } } label: { Image(systemName: "arrow.clockwise") }
                 .buttonStyle(.plain).foregroundStyle(Theme.muted).disabled(busy).help("Analisar de novo")
@@ -57,7 +70,7 @@ struct DiskView: View {
                 Text("de \(Format.bytes(d.total))").font(.system(size: 11)).foregroundStyle(Theme.muted)
             }
             card("Seguro limpar", Format.bytes(d.bytes(.safe)), Theme.ok, target: "safe", proxy) {
-                Button("Limpar o seguro…") { onClean(safe) }.buttonStyle(PillButton(color: Theme.ok)).disabled(safe.isEmpty || busy)
+                Button("Limpar o seguro…") { onClean(safe) }.buttonStyle(PillButton(color: Theme.ok)).disabled(safe.isEmpty || !store.canClean).help(store.canClean ? "" : "Aguarde a análise terminar")
             }
             card("Sobras de apps", Format.bytes(d.bytes(.leftover)), Theme.warn, target: "leftover", proxy) {
                 Text((removed == 1 ? "1 app removido" : "\(removed) apps removidos") + (maybe > 0 ? " + \(maybe) a conferir" : "")).font(.system(size: 11)).foregroundStyle(Theme.muted)
@@ -203,7 +216,7 @@ struct DiskView: View {
                 + Text(docker ? " · vai para a Lixeira · Docker apagado na hora" : " · vai para a Lixeira"))
                 .font(.system(size: 11)).foregroundStyle(Theme.muted)
             Spacer()
-            Button("Limpar marcados…") { onClean(marked) }.buttonStyle(PillButton(color: Theme.ok)).disabled(marked.isEmpty || busy)
+            Button("Limpar marcados…") { onClean(marked) }.buttonStyle(PillButton(color: Theme.ok)).disabled(marked.isEmpty || !store.canClean).help(store.canClean ? "" : "Aguarde a análise terminar")
         }
         .padding(.top, 10)
         .overlay(alignment: .top) { Theme.line.frame(height: 1) }

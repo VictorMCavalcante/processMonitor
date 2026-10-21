@@ -86,7 +86,7 @@ struct MainWindow: View {
             Picker("", selection: Binding(get: { tab }, set: { new in
                 tab = new
                 if case .processes(let m) = new { store.mode = m }
-                if new == .disk, store.disk == nil { Task { await store.analyzeDisk() } }
+                if new == .disk { Task { await store.openDiskTab() } }
             })) {
                 Text("Por app").tag(WindowTab.processes(.byApp))
                 Text("Por projeto").tag(WindowTab.processes(.byProject))
