@@ -10,6 +10,16 @@ public struct PeakItem: Codable, Sendable, Equatable {
     }
 }
 
+public struct PeakGPUItem: Codable, Sendable, Equatable {
+    public var title: String
+    public var percent: Double
+
+    public init(title: String, percent: Double) {
+        self.title = title
+        self.percent = percent
+    }
+}
+
 public struct PeakEpisode: Codable, Sendable, Identifiable, Equatable {
     public var id: UUID
     public var start: Date
@@ -17,14 +27,16 @@ public struct PeakEpisode: Codable, Sendable, Identifiable, Equatable {
     public var maxLevel: Int
     public var maxPressure: Int
     public var top: [PeakItem]
+    public var topGPU: [PeakGPUItem]?
 
-    public init(id: UUID, start: Date, end: Date?, maxLevel: Int, maxPressure: Int, top: [PeakItem]) {
+    public init(id: UUID, start: Date, end: Date?, maxLevel: Int, maxPressure: Int, top: [PeakItem], topGPU: [PeakGPUItem]? = nil) {
         self.id = id
         self.start = start
         self.end = end
         self.maxLevel = maxLevel
         self.maxPressure = maxPressure
         self.top = top
+        self.topGPU = topGPU
     }
 }
 
@@ -45,8 +57,9 @@ public struct PeakRecorder: Sendable {
             return true
         }
         let top = groups.sorted { $0.footprintBytes > $1.footprintBytes }.prefix(Self.topCount).map { PeakItem(title: $0.title, bytes: $0.footprintBytes) }
+        let topGPU = groups.filter { $0.gpuPercent > 0 }.sorted { $0.gpuPercent > $1.gpuPercent }.prefix(3).map { PeakGPUItem(title: $0.title, percent: $0.gpuPercent) }
         guard let i = openIndex else {
-            episodes.append(PeakEpisode(id: UUID(), start: now, end: nil, maxLevel: stats.level.rawValue, maxPressure: stats.pressurePercent, top: Array(top)))
+            episodes.append(PeakEpisode(id: UUID(), start: now, end: nil, maxLevel: stats.level.rawValue, maxPressure: stats.pressurePercent, top: Array(top), topGPU: topGPU))
             return true
         }
         var changed = false
@@ -57,6 +70,7 @@ public struct PeakRecorder: Sendable {
         if stats.pressurePercent > episodes[i].maxPressure {
             episodes[i].maxPressure = stats.pressurePercent
             episodes[i].top = Array(top)
+            episodes[i].topGPU = topGPU
             changed = true
         }
         return changed
