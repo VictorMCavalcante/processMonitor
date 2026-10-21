@@ -10,14 +10,16 @@ struct MetricCards: View {
             card("Pressão de memória", s.map { "\($0.pressurePercent)%" } ?? "–", key: "pressure", color: Theme.color(for: s?.level ?? .normal), valueColor: Theme.color(for: s?.level ?? .normal))
             card("Memória usada", s.map { Format.bytes($0.usedBytes) } ?? "–", key: "used", color: Theme.accent)
             card("CPU", s.map { "\(Int($0.cpuPercent))%" } ?? "–", key: "cpu", color: Theme.ok)
+            card("GPU", s?.gpuPercent.map { "\(Int($0))%" } ?? "–", key: "gpu", color: Theme.accent, note: s?.gpuMemoryBytes.map { "\(Format.bytes($0)) de memória de GPU" })
             card("Swap", s.map { Format.bytes($0.swapUsedBytes) } ?? "–", key: "swap", color: Theme.bad)
         }
     }
 
-    private func card(_ title: String, _ value: String, key: String, color: Color, valueColor: Color = Theme.text) -> some View {
+    private func card(_ title: String, _ value: String, key: String, color: Color, valueColor: Color = Theme.text, note: String? = nil) -> some View {
         VStack(alignment: .leading, spacing: 2) {
             Text(title).font(.system(size: 11)).foregroundStyle(Theme.muted)
             Text(value).font(.system(size: 18, weight: .semibold)).foregroundStyle(valueColor)
+            if let note { Text(note).font(.system(size: 10)).foregroundStyle(Theme.muted).lineLimit(1) }
             Sparkline(values: store.history[key]?.elements ?? [], color: color).padding(.top, 4)
         }
         .padding(.horizontal, 12).padding(.vertical, 10)

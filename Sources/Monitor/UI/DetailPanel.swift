@@ -62,6 +62,7 @@ struct DetailPanel: View {
             field("Iniciado", started(t.group.oldestStart))
             field("Memória", Format.bytes(isSingle ? r.snapshot.footprintBytes : t.group.footprintBytes))
             field("CPU", Format.cpu(isSingle ? r.cpuPercent : t.group.cpuPercent, cores: ProcessInfo.processInfo.activeProcessorCount) + " do Mac")
+            field("GPU", Format.cpu(isSingle ? r.gpuPercent : t.group.gpuPercent, cores: 1) + " da GPU")
             if isSingle {
                 field("Pai", parent(r))
                 field("PID", String(r.id))

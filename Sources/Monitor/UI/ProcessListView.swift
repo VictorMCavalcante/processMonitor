@@ -36,10 +36,17 @@ struct ProcessListView: View {
     }
 
     private var header: some View {
-        columns(icon: AnyView(Color.clear.frame(width: 20, height: 1)), name: AnyView(Text("NOME")), memory: AnyView(Text("MEMÓRIA")),
-                cpu: AnyView(Text("CPU")), age: AnyView(Text("ABERTO HÁ")), action: AnyView(Color.clear.frame(width: 22, height: 1)))
+        columns(icon: AnyView(Color.clear.frame(width: 20, height: 1)), name: AnyView(Text("NOME")), memory: AnyView(sortButton("MEMÓRIA", .memory)),
+                cpu: AnyView(sortButton("CPU", .cpu)), gpu: AnyView(sortButton("GPU", .gpu)), age: AnyView(Text("ABERTO HÁ")), action: AnyView(Color.clear.frame(width: 22, height: 1)))
             .font(.system(size: 10.5)).foregroundStyle(Theme.muted2)
             .background(Theme.panel2)
+    }
+
+    private func sortButton(_ title: String, _ sort: GroupSort) -> some View {
+        Button { store.sort = sort } label: {
+            Text(store.sort == sort ? title + " ▾" : title).foregroundStyle(store.sort == sort ? Theme.text : Theme.muted)
+        }
+        .buttonStyle(.plain)
     }
 
     private func groupRow(_ g: ProcessGroup, maxBytes: UInt64, suspectIds: Set<Int32>) -> some View {
@@ -63,6 +70,7 @@ struct ProcessListView: View {
             }),
             memory: AnyView(MemoryBar(bytes: g.footprintBytes, fraction: Double(g.footprintBytes) / Double(maxBytes), color: isSuspect ? Theme.warn : ignored ? Theme.muted2 : Theme.accent)),
             cpu: AnyView(Text(Format.cpu(g.cpuPercent, cores: ProcessInfo.processInfo.activeProcessorCount)).help(String(format: "%.1f%% de um núcleo", g.cpuPercent))),
+            gpu: AnyView(Text(Format.cpu(g.gpuPercent, cores: 1))),
             age: AnyView(Text(Format.age(since: g.oldestStart, now: store.now))),
             action: AnyView(closeButton(g))
         )
@@ -87,6 +95,7 @@ struct ProcessListView: View {
             }.padding(.leading, 18)),
             memory: AnyView(Text(Format.bytes(r.snapshot.footprintBytes))),
             cpu: AnyView(Text(Format.cpu(r.cpuPercent, cores: ProcessInfo.processInfo.activeProcessorCount)).help(String(format: "%.1f%% de um núcleo", r.cpuPercent))),
+            gpu: AnyView(Text(Format.cpu(r.gpuPercent, cores: 1))),
             age: AnyView(Text(Format.age(since: r.snapshot.startTime, now: store.now))),
             action: AnyView(closeButton(ProcessWindowModel.single(r)))
         )
@@ -108,12 +117,13 @@ struct ProcessListView: View {
         .help(reason ?? "Fechar")
     }
 
-    private func columns(icon: AnyView, name: AnyView, memory: AnyView, cpu: AnyView, age: AnyView, action: AnyView) -> some View {
+    private func columns(icon: AnyView, name: AnyView, memory: AnyView, cpu: AnyView, gpu: AnyView, age: AnyView, action: AnyView) -> some View {
         HStack(spacing: 10) {
             icon.frame(width: 22)
             name.frame(maxWidth: .infinity, alignment: .leading)
             memory.frame(width: 96, alignment: .leading)
             cpu.frame(width: 60, alignment: .leading)
+            gpu.frame(width: 60, alignment: .leading)
             age.frame(width: 76, alignment: .leading)
             action.frame(width: 22)
         }

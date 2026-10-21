@@ -34,6 +34,10 @@ struct PeaksView: View {
                 .font(.system(size: 12))
                 .padding(.leading, 19)
             }
+            if let gpu = p.topGPU, !gpu.isEmpty {
+                Text("GPU: " + gpu.map { "\($0.title) \(Int($0.percent))%" }.joined(separator: " · "))
+                    .foregroundStyle(Theme.muted).font(.system(size: 12)).padding(.leading, 19)
+            }
         }
         .font(.system(size: 12.5))
         .padding(12)

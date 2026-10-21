@@ -26,7 +26,7 @@ struct PopoverView: View {
                 if let s = store.stats {
                     Text("\(Format.bytes(s.usedBytes)) de \(Format.bytes(s.totalBytes)) · swap \(Format.bytes(s.swapUsedBytes))")
                         .foregroundStyle(Theme.muted)
-                    Text("CPU \(Int(s.cpuPercent))%").foregroundStyle(Theme.muted)
+                    Text("CPU \(Int(s.cpuPercent))%" + (s.gpuPercent.map { " · GPU \(Int($0))%" } ?? "")).foregroundStyle(Theme.muted)
                 }
             }
             .font(.system(size: 12))
