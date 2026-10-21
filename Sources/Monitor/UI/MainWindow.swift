@@ -32,10 +32,11 @@ struct MainWindow: View {
     @State private var pending: PendingAction?
     @State private var showPreferences = false
     @State private var tab: WindowTab = .processes(.byApp)
+    @FocusState private var searchFocused: Bool
 
     var body: some View {
         VStack(spacing: 0) {
-            toolbar
+            tabBar
             HStack(spacing: 0) {
                 VStack(spacing: 12) {
                     MetricCards(store: store)
@@ -58,6 +59,10 @@ struct MainWindow: View {
         }
         .background(Theme.bg)
         .foregroundStyle(Theme.text)
+        .toolbar { windowToolbar }
+        .modifier(HiddenWindowTitle())
+        .toolbarBackground(Theme.barTop, for: .windowToolbar)
+        .toolbarBackground(.visible, for: .windowToolbar)
         .preferredColorScheme(.dark)
         .tint(Theme.brand)
         .frame(minWidth: 1100, idealWidth: 1240, minHeight: 720, idealHeight: 820)
@@ -75,40 +80,102 @@ struct MainWindow: View {
         }
     }
 
-    private var toolbar: some View {
+    @ToolbarContentBuilder
+    private var windowToolbar: some ToolbarContent {
+        if #available(macOS 26.0, *) {
+            ToolbarItem(placement: .navigation) { brand }.sharedBackgroundVisibility(.hidden)
+            ToolbarSpacer(.flexible)
+            ToolbarItem(placement: .primaryAction) { toolbarActions }.sharedBackgroundVisibility(.hidden)
+        } else {
+            ToolbarItem(placement: .navigation) { brand }
+            ToolbarItem(placement: .primaryAction) { toolbarActions }
+        }
+    }
+
+    private var brand: some View {
+        HStack(spacing: 8) {
+            Image(nsImage: NSApp.applicationIconImage).resizable().frame(width: 22, height: 22)
+            Text("vernio").font(.system(size: 15, weight: .semibold)).kerning(-0.3)
+        }
+        .padding(.leading, 4)
+    }
+
+    private var toolbarActions: some View {
         HStack(spacing: 10) {
             HStack(spacing: 6) {
                 Image(systemName: "magnifyingglass").foregroundStyle(Theme.muted)
-                TextField("Buscar processo, projeto, porta…", text: $store.search).textFieldStyle(.plain)
+                TextField("Buscar processo, projeto, porta…", text: $store.search)
+                    .textFieldStyle(.plain)
+                    .focused($searchFocused)
+                Text("⌘F").font(.system(size: 10)).foregroundStyle(Theme.muted2)
+                    .padding(.horizontal, 4)
+                    .overlay(RoundedRectangle(cornerRadius: 4).stroke(Theme.line))
             }
-            .padding(.horizontal, 10).padding(.vertical, 6)
-            .background(RoundedRectangle(cornerRadius: 7).fill(Theme.field))
-            .overlay(RoundedRectangle(cornerRadius: 7).stroke(Theme.line))
-            Picker("", selection: Binding(get: { tab }, set: { new in
-                tab = new
-                if case .processes(let m) = new { store.mode = m }
-                if new == .disk { Task { await store.openDiskTab() } }
-            })) {
-                Text("Por app").tag(WindowTab.processes(.byApp))
-                Text("Por projeto").tag(WindowTab.processes(.byProject))
-                Text("Lista").tag(WindowTab.processes(.flat))
-                Text("Portas").tag(WindowTab.ports)
-                if store.dockerRunning { Text("Docker").tag(WindowTab.docker) }
-                Text("Picos").tag(WindowTab.peaks)
-                Text("Disco").tag(WindowTab.disk)
-            }
-            .pickerStyle(.segmented)
-            .frame(width: store.dockerRunning ? 600 : 520)
+            .font(.system(size: 12))
+            .padding(.horizontal, 10).padding(.vertical, 5)
+            .frame(width: 300)
+            .background(RoundedRectangle(cornerRadius: 8).fill(Theme.field))
+            .overlay(RoundedRectangle(cornerRadius: 8).stroke(Theme.line))
+            .background(Button("") { searchFocused = true }.keyboardShortcut("f", modifiers: .command).opacity(0))
             Button { showPreferences.toggle() } label: { Image(systemName: "gearshape") }
                 .buttonStyle(.plain)
                 .foregroundStyle(Theme.muted)
                 .help("Preferências")
                 .popover(isPresented: $showPreferences) { PreferencesView(store: store) }
         }
-        .font(.system(size: 12))
-        .padding(.horizontal, 14).padding(.vertical, 10)
-        .background(LinearGradient(colors: [Theme.barTop, Theme.barBottom], startPoint: .top, endPoint: .bottom))
+    }
+
+    private var tabBar: some View {
+        HStack(alignment: .bottom, spacing: 20) {
+            group("Processos")
+            tabButton("Por app", .processes(.byApp))
+            tabButton("Por projeto", .processes(.byProject))
+            tabButton("Lista", .processes(.flat))
+            Theme.line.frame(width: 1, height: 16).padding(.bottom, 11)
+            group("Sistema")
+            tabButton("Portas", .ports)
+            if store.dockerRunning { tabButton("Docker", .docker) }
+            tabButton("Picos", .peaks)
+            tabButton("Disco", .disk)
+            Spacer()
+        }
+        .font(.system(size: 12.5))
+        .padding(.horizontal, 18)
+        .frame(height: 40, alignment: .bottom)
+        .background(Theme.barBottom)
         .overlay(alignment: .bottom) { Theme.line.frame(height: 1) }
+    }
+
+    private func group(_ title: String) -> some View {
+        Text(title.uppercased())
+            .font(.system(size: 10, weight: .medium))
+            .kerning(0.6)
+            .foregroundStyle(Theme.muted2)
+            .padding(.bottom, 11)
+    }
+
+    private func tabButton(_ title: String, _ value: WindowTab) -> some View {
+        let on = tab == value
+        return Button {
+            select(value)
+        } label: {
+            Text(title)
+                .fontWeight(on ? .semibold : .regular)
+                .foregroundStyle(on ? Theme.text : Theme.muted)
+                .padding(.bottom, 10)
+                .overlay(alignment: .bottom) {
+                    Rectangle().fill(on ? Theme.brand : .clear).frame(height: 2)
+                }
+                .contentShape(Rectangle())
+        }
+        .buttonStyle(.plain)
+        .focusEffectDisabled()
+    }
+
+    private func select(_ new: WindowTab) {
+        tab = new
+        if case .processes(let m) = new { store.mode = m }
+        if new == .disk { Task { await store.openDiskTab() } }
     }
 
     private var selectedGroup: ProcessGroup? {
@@ -225,3 +292,14 @@ struct MainWindow: View {
         }
     }
 }
+
+private struct HiddenWindowTitle: ViewModifier {
+    func body(content: Content) -> some View {
+        if #available(macOS 15.0, *) {
+            content.toolbar(removing: .title)
+        } else {
+            content.navigationTitle("")
+        }
+    }
+}
+
