@@ -32,4 +32,8 @@ public struct DiskReportStore: Sendable {
         try? FileManager.default.createDirectory(at: url.deletingLastPathComponent(), withIntermediateDirectories: true)
         try? data.write(to: url, options: .atomic)
     }
+
+    public func clear() {
+        try? FileManager.default.removeItem(at: url)
+    }
 }

@@ -36,3 +36,13 @@ import Foundation
     #expect(Set(m2.items.map(\.id)) == ["s1", "d0"])
     #expect(m2.free == 4)
 }
+
+@Test func clearRemovesSavedReport() {
+    let url = FileManager.default.temporaryDirectory.appendingPathComponent(UUID().uuidString + "/r.json")
+    let store = DiskReportStore(url: url)
+    store.clear()
+    store.save(DiskReport(total: 1, free: 1, items: [], protectedSkipped: false, dockerMeasured: false, scannedAt: Date(timeIntervalSince1970: 0)))
+    #expect(store.load() != nil)
+    store.clear()
+    #expect(store.load() == nil)
+}

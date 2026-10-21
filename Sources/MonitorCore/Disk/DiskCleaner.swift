@@ -13,7 +13,7 @@ public struct CleanResult: Sendable, Equatable {
 }
 
 public enum DiskCleaner {
-    public static func clean(_ items: [DiskItem], runningBundleIDs: Set<String>,
+    public static func clean(_ items: [DiskItem], runningBundleIDs: Set<String>, busyPaths: [String],
                              exists: (String) -> Bool,
                              trash: (String) throws -> Void,
                              docker: (DockerPrune) -> String?) -> CleanResult {
@@ -35,6 +35,14 @@ public enum DiskCleaner {
                     result.dockerBytes += item.bytes
                 }
             case .trash(let paths):
+                let inUse = paths.contains { path in
+                    let project = (path as NSString).deletingLastPathComponent
+                    return busyPaths.contains { $0 == project || $0.hasPrefix(project + "/") }
+                }
+                if inUse {
+                    result.failures.append("\(item.title): em uso")
+                    continue
+                }
                 let present = paths.filter(exists)
                 if present.isEmpty {
                     result.failures.append("\(item.title): já não existe")

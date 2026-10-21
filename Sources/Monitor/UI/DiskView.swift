@@ -8,8 +8,10 @@ struct DiskView: View {
     @State private var selected: Set<String> = []
     @State private var expanded: Set<String> = []
     @State private var known: Set<String> = []
+    @State private var defaults: [String: Bool] = [:]
 
     private var busy: Bool { store.diskScanning || store.diskCleaning }
+    private var cleanHint: String { store.canClean ? "" : busy ? "Aguarde a análise terminar" : "Analise de novo (↻) para limpar" }
 
     var body: some View {
         VStack(spacing: 10) {
@@ -35,8 +37,10 @@ struct DiskView: View {
             let leaves = (d?.items ?? []).flatMap(\.leaves)
             let ids = Set(leaves.map(\.id))
             let fresh = leaves.filter { $0.checkedByDefault && !known.contains($0.id) }.map(\.id)
-            selected = (store.diskScanning ? selected : selected.intersection(ids)).union(fresh)
+            let turnedOff = leaves.filter { !$0.checkedByDefault && defaults[$0.id] == true }.map(\.id)
+            selected = (store.diskScanning ? selected : selected.intersection(ids)).union(fresh).subtracting(turnedOff)
             known = store.diskScanning ? known.union(ids) : ids
+            for leaf in leaves { defaults[leaf.id] = leaf.checkedByDefault }
         }
     }
 
@@ -69,7 +73,7 @@ struct DiskView: View {
                 Text("de \(Format.bytes(d.total))").font(.system(size: 11)).foregroundStyle(Theme.muted)
             }
             card("Seguro limpar", Format.bytes(d.bytes(.safe)), Theme.ok, target: "safe", proxy) {
-                Button("Limpar o seguro…") { onClean(safe) }.buttonStyle(PillButton(color: Theme.ok)).disabled(safe.isEmpty || !store.canClean).help(store.canClean ? "" : "Aguarde a análise terminar")
+                Button("Limpar o seguro…") { onClean(safe) }.buttonStyle(PillButton(color: Theme.ok)).disabled(safe.isEmpty || !store.canClean).help(cleanHint)
             }
             card("Sobras de apps", Format.bytes(d.bytes(.leftover)), Theme.warn, target: "leftover", proxy) {
                 Text((removed == 1 ? "1 app removido" : "\(removed) apps removidos") + (maybe > 0 ? " + \(maybe) a conferir" : "")).font(.system(size: 11)).foregroundStyle(Theme.muted)
@@ -215,7 +219,7 @@ struct DiskView: View {
                 + Text(docker ? " · vai para a Lixeira · Docker apagado na hora" : " · vai para a Lixeira"))
                 .font(.system(size: 11)).foregroundStyle(Theme.muted)
             Spacer()
-            Button("Limpar marcados…") { onClean(marked) }.buttonStyle(PillButton(color: Theme.ok)).disabled(marked.isEmpty || !store.canClean).help(store.canClean ? "" : "Aguarde a análise terminar")
+            Button("Limpar marcados…") { onClean(marked) }.buttonStyle(PillButton(color: Theme.ok)).disabled(marked.isEmpty || !store.canClean).help(cleanHint)
         }
         .padding(.top, 10)
         .overlay(alignment: .top) { Theme.line.frame(height: 1) }

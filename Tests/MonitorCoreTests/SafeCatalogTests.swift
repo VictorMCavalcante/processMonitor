@@ -38,7 +38,7 @@ private let mb: UInt64 = 1_048_576
     let fs = FakeDiskFS(files: ["/h/Library/Caches/JetBrains/x": (2000 * mb, .distantPast)])
     let jb = SafeCatalog.scan(fs: fs, home: "/h", runningBundleIDs: [], busyPaths: [], skipProtectedHomeFolders: false).first { $0.title == "JetBrains cache" }
     #expect(jb?.ownerBundlePrefix == "com.jetbrains" && jb?.checkedByDefault == true && jb?.warning == nil)
-    let r = DiskCleaner.clean(jb.map { [$0] } ?? [], runningBundleIDs: ["com.jetbrains.intellij"], exists: { _ in true }, trash: { _ in }, docker: { _ in nil })
+    let r = DiskCleaner.clean(jb.map { [$0] } ?? [], runningBundleIDs: ["com.jetbrains.intellij"], busyPaths: [], exists: { _ in true }, trash: { _ in }, docker: { _ in nil })
     #expect(r.trashedBytes == 0 && r.failures == ["JetBrains cache: feche o app primeiro"])
 }
 

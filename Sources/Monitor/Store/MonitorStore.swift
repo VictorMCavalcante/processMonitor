@@ -37,7 +37,7 @@ final class MonitorStore {
     var diskCleaning = false
     var diskProgress: DiskProgress?
     var diskFresh = false
-    var canClean: Bool { diskFresh && !diskScanning && !diskCleaning }
+    var canClean: Bool { diskFresh && !diskScanning && !diskCleaning && disk.map { !DiskReportStore.isStale($0, now: Date()) } == true }
     @ObservationIgnored private let diskStore = DiskReportStore(url: DiskReportStore.defaultURL)
     @ObservationIgnored private var diskLoad: Task<Void, Never>?
     @ObservationIgnored private var diskPartials = 0
@@ -135,8 +135,7 @@ final class MonitorStore {
         diskPartials = 0
         let scan = diskScan
         let running = Set(NSWorkspace.shared.runningApplications.compactMap(\.bundleIdentifier))
-        let busyKinds: Set<ProcessKind> = [.devServer, .claudeSession, .shell]
-        let busy = rows.filter { busyKinds.contains($0.identified.kind) }.compactMap(\.snapshot.cwd)
+        let busy = busyCwds
         let client = dockerRunning ? docker : nil
         let store = diskStore
         let progress: @Sendable (DiskProgress) -> Void = { p in Task { @MainActor [weak self] in self?.diskStep(p, scan: scan) } }
@@ -173,6 +172,11 @@ final class MonitorStore {
         diskScanning = false
     }
 
+    private var busyCwds: [String] {
+        let kinds: Set<ProcessKind> = [.devServer, .claudeSession, .shell]
+        return rows.filter { kinds.contains($0.identified.kind) }.compactMap(\.snapshot.cwd)
+    }
+
     private func diskStep(_ p: DiskProgress, scan: Int) {
         guard scan == diskScan, diskScanning else { return }
         if let current = diskProgress, current.stage == p.stage {
@@ -184,17 +188,19 @@ final class MonitorStore {
     }
 
     func cleanDisk(_ leaves: [DiskItem]) async -> CleanResult {
-        guard !diskCleaning else { return CleanResult() }
+        guard canClean else { return CleanResult() }
         diskCleaning = true
         defer { diskCleaning = false }
         let running = Set(NSWorkspace.shared.runningApplications.compactMap(\.bundleIdentifier))
+        let busy = busyCwds
         let client = docker
         let result = await Task.detached(priority: .utility) {
-            DiskCleaner.clean(leaves, runningBundleIDs: running,
+            DiskCleaner.clean(leaves, runningBundleIDs: running, busyPaths: busy,
                               exists: { FileManager.default.fileExists(atPath: $0) },
                               trash: { try FileManager.default.trashItem(at: URL(fileURLWithPath: $0), resultingItemURL: nil) },
                               docker: { client.prune($0) })
         }.value
+        diskStore.clear()
         while diskScanning { try? await Task.sleep(for: .milliseconds(100)) }
         await analyzeDisk()
         var summary: [String] = []
