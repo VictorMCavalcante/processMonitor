@@ -5,7 +5,9 @@ final class FakeDiskFS: DiskFS {
     let files: [String: (bytes: UInt64, modified: Date)]
     let unreadable: Set<String>
     let plists: [String: [String: String]]
-    var listed: [String] = []
+    private let listedLock = NSLock()
+    private var listedPaths: [String] = []
+    var listed: [String] { listedLock.withLock { listedPaths } }
 
     init(files: [String: (bytes: UInt64, modified: Date)], unreadable: Set<String> = [], plists: [String: [String: String]] = [:]) {
         self.files = files
@@ -19,7 +21,7 @@ final class FakeDiskFS: DiskFS {
     }
 
     func list(_ path: String) -> [String]? {
-        listed.append(path)
+        listedLock.withLock { listedPaths.append(path) }
         if unreadable.contains(path) { return nil }
         let prefix = path.hasSuffix("/") ? path : path + "/"
         let names = Set(under(path).map { String($0.dropFirst(prefix.count)).split(separator: "/").first.map(String.init) ?? "" })
@@ -64,4 +66,15 @@ final class FakeAppIndex: AppIndex {
         let query = AppNameMatch.normalize(name)
         return tools.contains { AppNameMatch.matches(query, AppNameMatch.normalize($0)) }
     }
+}
+
+final class Locked<T>: @unchecked Sendable {
+    private var v: T
+    private let lock = NSLock()
+
+    init(_ v: T) { self.v = v }
+
+    var value: T { lock.withLock { v } }
+
+    func mutate(_ f: (inout T) -> Void) { lock.withLock { f(&v) } }
 }
