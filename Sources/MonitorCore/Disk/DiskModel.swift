@@ -1,16 +1,16 @@
 import Foundation
 
-public enum DiskCategory: Sendable, Equatable { case safe, leftover, maybeLeftover, appData }
+public enum DiskCategory: Codable, Sendable, Equatable { case safe, leftover, maybeLeftover, appData }
 
-public enum DockerPrune: String, Sendable, Equatable { case danglingAndBuildCache, unusedImages }
+public enum DockerPrune: String, Codable, Sendable, Equatable { case danglingAndBuildCache, unusedImages }
 
-public enum DiskAction: Sendable, Equatable {
+public enum DiskAction: Codable, Sendable, Equatable {
     case trash([String])
     case docker(DockerPrune)
     case none
 }
 
-public struct DiskItem: Sendable, Identifiable, Equatable {
+public struct DiskItem: Codable, Sendable, Identifiable, Equatable {
     public var id: String
     public var title: String
     public var detail: String?

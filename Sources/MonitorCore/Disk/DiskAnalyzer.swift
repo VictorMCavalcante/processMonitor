@@ -24,13 +24,22 @@ public struct DiskProgress: Sendable, Equatable {
     }
 }
 
-public struct DiskReport: Sendable, Equatable {
+public struct DiskReport: Codable, Sendable, Equatable {
     public var total: UInt64
     public var free: UInt64
     public var items: [DiskItem]
     public var protectedSkipped: Bool
     public var dockerMeasured: Bool
     public var scannedAt: Date
+
+    public init(total: UInt64, free: UInt64, items: [DiskItem], protectedSkipped: Bool, dockerMeasured: Bool, scannedAt: Date) {
+        self.total = total
+        self.free = free
+        self.items = items
+        self.protectedSkipped = protectedSkipped
+        self.dockerMeasured = dockerMeasured
+        self.scannedAt = scannedAt
+    }
 
     public func bytes(_ c: DiskCategory) -> UInt64 {
         let cats: Set<DiskCategory> = c == .leftover ? [.leftover, .maybeLeftover] : [c]
