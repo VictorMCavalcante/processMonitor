@@ -46,6 +46,12 @@ public struct DiskReport: Codable, Sendable, Equatable {
         return items.filter { cats.contains($0.category) }.reduce(0) { $0 + $1.bytes }
     }
 
+    public func merging(partial: DiskReport, finished: Set<DiskCategory>) -> DiskReport {
+        var r = partial
+        r.items = items.filter { !finished.contains($0.category) } + partial.items.filter { finished.contains($0.category) }
+        return r
+    }
+
     public var used: UInt64 { total > free ? total - free : 0 }
 
     public var systemOther: UInt64 {

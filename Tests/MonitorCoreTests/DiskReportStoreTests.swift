@@ -20,3 +20,19 @@ import Foundation
     #expect(!DiskReportStore.isStale(r, now: Date(timeIntervalSince1970: 3600)))
     #expect(DiskReportStore.isStale(r, now: Date(timeIntervalSince1970: 3601)))
 }
+
+@Test func mergingKeepsUnfinishedCategories() {
+    func item(_ id: String, _ c: DiskCategory) -> DiskItem {
+        DiskItem(id: id, title: id, detail: nil, category: c, bytes: 1, action: .none)
+    }
+    let old = DiskReport(total: 10, free: 2, items: [item("s0", .safe), item("l0", .leftover), item("m0", .maybeLeftover), item("d0", .appData)],
+                         protectedSkipped: false, dockerMeasured: false, scannedAt: Date(timeIntervalSince1970: 0))
+    let p1 = DiskReport(total: 20, free: 5, items: [item("s1", .safe)], protectedSkipped: true, dockerMeasured: true, scannedAt: Date(timeIntervalSince1970: 9))
+    let m1 = old.merging(partial: p1, finished: [.safe])
+    #expect(Set(m1.items.map(\.id)) == ["s1", "l0", "m0", "d0"])
+    #expect(m1.total == 20 && m1.free == 5)
+    let p2 = DiskReport(total: 20, free: 4, items: [item("s1", .safe)], protectedSkipped: true, dockerMeasured: true, scannedAt: Date(timeIntervalSince1970: 9))
+    let m2 = m1.merging(partial: p2, finished: [.safe, .leftover, .maybeLeftover])
+    #expect(Set(m2.items.map(\.id)) == ["s1", "d0"])
+    #expect(m2.free == 4)
+}

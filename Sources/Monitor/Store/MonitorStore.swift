@@ -2,6 +2,7 @@ import AppKit
 import Foundation
 import MonitorCore
 import Observation
+import os
 
 @MainActor
 @Observable
@@ -35,7 +36,8 @@ final class MonitorStore {
     var diskFresh = false
     var canClean: Bool { diskFresh && !diskScanning && !diskCleaning }
     @ObservationIgnored private let diskStore = DiskReportStore(url: DiskReportStore.defaultURL)
-    @ObservationIgnored private var diskLoaded = false
+    @ObservationIgnored private var diskLoad: Task<Void, Never>?
+    @ObservationIgnored private var diskPartials = 0
     @ObservationIgnored private var diskScan = 0
     @ObservationIgnored private var diskStages: Set<String> = []
     @ObservationIgnored private var runawayTracker = RunawayTracker()
@@ -111,12 +113,14 @@ final class MonitorStore {
     }
 
     func openDiskTab() async {
-        if !diskLoaded {
-            diskLoaded = true
+        if diskLoad == nil {
             let store = diskStore
-            let saved = await Task.detached(priority: .utility) { store.load() }.value
-            if disk == nil { disk = saved }
+            diskLoad = Task {
+                let saved = await Task.detached(priority: .utility) { store.load() }.value
+                if disk == nil { disk = saved }
+            }
         }
+        await diskLoad?.value
         if disk.map({ DiskReportStore.isStale($0, now: Date()) }) ?? true { await analyzeDisk() }
     }
 
@@ -125,6 +129,7 @@ final class MonitorStore {
         diskScanning = true
         diskScan += 1
         diskStages = []
+        diskPartials = 0
         let scan = diskScan
         let running = Set(NSWorkspace.shared.runningApplications.compactMap(\.bundleIdentifier))
         let busyKinds: Set<ProcessKind> = [.devServer, .claudeSession, .shell]
@@ -132,10 +137,17 @@ final class MonitorStore {
         let client = dockerRunning ? docker : nil
         let store = diskStore
         let progress: @Sendable (DiskProgress) -> Void = { p in Task { @MainActor [weak self] in self?.diskStep(p, scan: scan) } }
+        let count = OSAllocatedUnfairLock(initialState: 0)
         let partial: @Sendable (DiskReport) -> Void = { r in
+            let index = count.withLock { n in
+                n += 1
+                return n
+            }
             Task { @MainActor [weak self] in
-                guard let self, self.diskScan == scan, self.diskScanning else { return }
-                self.disk = r
+                guard let self, self.diskScan == scan, self.diskScanning, index > self.diskPartials else { return }
+                self.diskPartials = index
+                let finished: Set<DiskCategory> = index == 1 ? [.safe] : [.safe, .leftover, .maybeLeftover]
+                self.disk = self.disk?.merging(partial: r, finished: finished) ?? r
             }
         }
         let report = await Task.detached(priority: .utility) {

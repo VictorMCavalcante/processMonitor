@@ -52,8 +52,7 @@ struct DiskView: View {
                     }
                 }
             } else if let d = store.disk {
-                let age = Format.age(since: d.scannedAt, now: store.now)
-                Text(store.diskFresh ? "analisado há \(age)" : "de \(age) atrás").font(.system(size: 11)).foregroundStyle(Theme.muted)
+                Text("analisado há \(Format.age(since: d.scannedAt, now: store.now))").font(.system(size: 11)).foregroundStyle(Theme.muted)
             }
             Button { Task { await store.analyzeDisk() } } label: { Image(systemName: "arrow.clockwise") }
                 .buttonStyle(.plain).foregroundStyle(Theme.muted).disabled(busy).help("Analisar de novo")
