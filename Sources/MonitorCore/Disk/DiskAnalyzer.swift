@@ -77,21 +77,24 @@ public enum DiskAnalyzer {
     static func parallelMap<T>(_ count: Int, onDone: (Int) -> Void = { _ in }, _ work: (Int) -> T) -> [T] {
         withoutActuallyEscaping(work) { work in
             withoutActuallyEscaping(onDone) { onDone in
-                let run = Unchecked((work: work, onDone: onDone, results: [T?](repeating: nil, count: count), next: 0, done: 0))
+                let fns = Unchecked((work: work, onDone: onDone))
+                let state = Unchecked((results: [T?](repeating: nil, count: count), next: 0, done: 0))
                 let lock = NSLock()
                 DispatchQueue.concurrentPerform(iterations: min(parallelism, count)) { _ in
+                    let (work, onDone) = fns.value
                     while true {
-                        let i = lock.withLock { run.value.next += 1; return run.value.next - 1 }
+                        let i = lock.withLock { state.value.next += 1; return state.value.next - 1 }
                         guard i < count else { return }
-                        let result = run.value.work(i)
-                        lock.withLock {
-                            run.value.results[i] = result
-                            run.value.done += 1
-                            run.value.onDone(run.value.done)
+                        let result = work(i)
+                        let done = lock.withLock {
+                            state.value.results[i] = result
+                            state.value.done += 1
+                            return state.value.done
                         }
+                        onDone(done)
                     }
                 }
-                return run.value.results.map { $0! }
+                return state.value.results.map { $0! }
             }
         }
     }
