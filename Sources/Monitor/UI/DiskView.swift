@@ -120,7 +120,7 @@ struct DiskView: View {
 
     private var accessNote: some View {
         HStack(spacing: 8) {
-            Text("Algumas pastas de apps não foram lidas. Dê Acesso Total ao Disco ao Monitor em Ajustes › Privacidade e Segurança para ver tudo.")
+            Text("Algumas pastas de apps não foram lidas. Dê Acesso Total ao Disco ao Vernio em Ajustes › Privacidade e Segurança para ver tudo.")
                 .font(.system(size: 11)).foregroundStyle(Theme.muted)
             Spacer()
             Button("Abrir Ajustes") {

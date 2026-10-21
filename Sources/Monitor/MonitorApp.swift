@@ -21,7 +21,7 @@ struct MonitorApp: App {
         }
         .menuBarExtraStyle(.window)
 
-        Window("Monitor", id: "main") {
+        Window("Vernio", id: "main") {
             MainWindow(store: store)
                 .onAppear { store.windowVisible = true }
                 .onDisappear { store.windowVisible = false }

@@ -100,7 +100,7 @@ struct ProcessListView: View {
             action: AnyView(closeButton(ProcessWindowModel.single(r)))
         )
         .foregroundStyle(Theme.text.opacity(0.85))
-        .background(selected ? Theme.accent.opacity(0.10) : Color(hex: 0x1B1C21))
+        .background(selected ? Theme.accent.opacity(0.10) : Theme.row)
         .contentShape(Rectangle())
         .onTapGesture { selection = .process(r.id) }
     }

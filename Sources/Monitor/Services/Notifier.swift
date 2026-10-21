@@ -18,7 +18,7 @@ enum Notifier {
         switch alert {
         case .pressureRose(let level):
             content.title = level == .critical ? "Pressão de memória crítica" : "Pressão de memória moderada"
-            content.body = "Abra o Monitor para ver o que está consumindo memória."
+            content.body = "Abra o Vernio para ver o que está consumindo memória."
         case .newSuspect(_, let title):
             content.title = "Processo esquecido: \(title)"
             content.body = "Parece aberto e sem uso. Você decide se fecha."

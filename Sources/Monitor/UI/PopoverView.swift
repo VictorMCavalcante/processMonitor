@@ -16,6 +16,7 @@ struct PopoverView: View {
         .background(Theme.panel.opacity(0.92))
         .foregroundStyle(Theme.text)
         .preferredColorScheme(.dark)
+        .tint(Theme.brand)
     }
 
     private var header: some View {

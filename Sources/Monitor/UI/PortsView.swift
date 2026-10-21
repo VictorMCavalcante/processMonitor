@@ -15,7 +15,7 @@ struct PortsView: View {
                     .font(.system(size: 12, design: .monospaced))
                     .frame(width: 90)
                     .padding(.horizontal, 8).padding(.vertical, 5)
-                    .background(RoundedRectangle(cornerRadius: 7).fill(Color(hex: 0x14151A)))
+                    .background(RoundedRectangle(cornerRadius: 7).fill(Theme.field))
                     .overlay(RoundedRectangle(cornerRadius: 7).stroke(Theme.line))
                     .onSubmit(release)
                 Button("Liberar", action: release).buttonStyle(PillButton(color: Theme.bad)).disabled(UInt16(portText) == nil)
