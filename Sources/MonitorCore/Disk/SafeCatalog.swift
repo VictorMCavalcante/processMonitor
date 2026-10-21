@@ -6,6 +6,7 @@ public enum SafeCatalog {
         let paths: [String]
         var owner: String? = nil
         var warning: String? = nil
+        var checked = true
     }
 
     private static let entries: [Entry] = [
@@ -18,7 +19,8 @@ public enum SafeCatalog {
         Entry(title: "Xcode DerivedData", paths: ["Library/Developer/Xcode/DerivedData"], owner: "com.apple.dt.Xcode"),
         Entry(title: "JetBrains cache", paths: ["Library/Caches/JetBrains"], owner: "com.jetbrains"),
         Entry(title: "Gradle cache", paths: [".gradle/caches"]),
-        Entry(title: "Hugging Face models", paths: [".cache/huggingface/hub", ".cache/huggingface/xet"], warning: "baixar de novo é lento"),
+        Entry(title: "Hugging Face models", paths: [".cache/huggingface/hub", ".cache/huggingface/xet"], warning: "baixar de novo é lento", checked: false),
+        Entry(title: "Wallpapers e protetores aéreos", paths: ["Library/Application Support/com.apple.wallpaper/aerials/videos"], warning: "o macOS baixa de novo se você usar um fundo animado"),
     ]
 
     private static let maxDepth = 6
@@ -35,7 +37,7 @@ public enum SafeCatalog {
             items.append(DiskItem(
                 id: entry.title, title: entry.title, detail: nil, category: .safe, bytes: bytes,
                 action: .trash(paths),
-                checkedByDefault: entry.warning == nil && !running,
+                checkedByDefault: entry.checked && !running,
                 warning: running ? "feche o app primeiro" : entry.warning,
                 ownerBundlePrefix: entry.owner,
                 revealPath: first))

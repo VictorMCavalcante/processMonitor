@@ -56,3 +56,9 @@ private let mb: UInt64 = 1_048_576
     let all = SafeCatalog.scan(fs: fs, home: "/h", runningBundleIDs: [], busyPaths: [], skipProtectedHomeFolders: false).first { $0.id == "node_modules" }
     #expect(all?.children.map(\.id).sorted() == ["/h/Documents/p/node_modules", "/h/Music/m/node_modules", "/h/dev/a/node_modules"])
 }
+
+@Test func aerialVideosAreSafeAndChecked() {
+    let fs = FakeDiskFS(files: ["/h/Library/Application Support/com.apple.wallpaper/aerials/videos/a.mov": (9_000 * mb, .distantPast)])
+    let w = SafeCatalog.scan(fs: fs, home: "/h", runningBundleIDs: [], busyPaths: [], skipProtectedHomeFolders: false).first { $0.title == "Wallpapers e protetores aéreos" }
+    #expect(w?.checkedByDefault == true && w?.warning == "o macOS baixa de novo se você usar um fundo animado")
+}
