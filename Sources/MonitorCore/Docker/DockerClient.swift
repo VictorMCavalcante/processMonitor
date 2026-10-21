@@ -64,22 +64,39 @@ public struct DockerClient: Sendable {
         guard let df = command(["system", "df", "--format", "{{json .}}"], timeout: 30),
               let dangling = command(["images", "-f", "dangling=true", "--format", "{{json .}}"], timeout: 30),
               let all = command(["images", "--format", "{{json .}}"], timeout: 30),
-              let ps = command(["ps", "-a", "--format", "{{.Image}}"], timeout: 30) else { return nil }
+              let ps = command(["ps", "-a", "--format", "{{.ImageID}} {{.Image}}"], timeout: 30) else { return nil }
         let buildCache = df.split(separator: "\n").compactMap(Self.json)
             .filter { $0["Type"] == "Build Cache" }
             .map { Self.parseDecimalSize(String(($0["Reclaimable"] ?? "").split(separator: " ").first ?? "")) }
             .reduce(0, +)
         let danglingImages = dangling.split(separator: "\n").compactMap(Self.json)
-        let danglingIDs = Set(danglingImages.compactMap { $0["ID"] })
-        let used = Set(ps.split(separator: "\n").map { $0.trimmingCharacters(in: .whitespaces) })
+        let danglingIDs = Set(danglingImages.compactMap { $0["ID"].map(Self.shortID) })
+        var usedIDs: [String] = []
+        var usedNames: Set<String> = []
+        for line in ps.split(separator: "\n") {
+            let parts = line.split(separator: " ").map(String.init)
+            if let id = parts.first { usedIDs.append(Self.shortID(id)) }
+            if parts.count > 1 { usedNames.insert(parts[1].contains(":") ? parts[1] : parts[1] + ":latest") }
+        }
+        var order: [String] = []
+        var byID: [String: (size: UInt64, names: [String])] = [:]
+        for image in all.split(separator: "\n").compactMap(Self.json) {
+            guard let raw = image["ID"] else { continue }
+            let id = Self.shortID(raw)
+            guard !danglingIDs.contains(raw), !danglingIDs.contains(id) else { continue }
+            if byID[id] == nil { order.append(id) }
+            var entry = byID[id] ?? (Self.parseDecimalSize(image["Size"] ?? ""), [])
+            entry.names.append("\(image["Repository"] ?? ""):\(image["Tag"] ?? "")")
+            byID[id] = entry
+        }
         var unused: UInt64 = 0
         var names: [String] = []
-        for image in all.split(separator: "\n").compactMap(Self.json) {
-            guard let id = image["ID"], !danglingIDs.contains(id) else { continue }
-            let name = "\(image["Repository"] ?? ""):\(image["Tag"] ?? "")"
-            guard !used.contains(name), !used.contains(where: { id.hasPrefix($0) || $0.hasPrefix(id) }) else { continue }
-            unused += Self.parseDecimalSize(image["Size"] ?? "")
-            names.append(name)
+        for id in order {
+            guard let entry = byID[id] else { continue }
+            let inUse = usedIDs.contains { !$0.isEmpty && (id.hasPrefix($0) || $0.hasPrefix(id)) } || entry.names.contains { usedNames.contains($0) }
+            guard !inUse else { continue }
+            unused += entry.size
+            names += entry.names
         }
         let danglingSize = danglingImages.map { Self.parseDecimalSize($0["Size"] ?? "") }.reduce(0, +)
         return DockerDiskUsage(danglingAndBuildCache: danglingSize + buildCache, unusedImages: unused, unusedImageNames: names)
@@ -88,7 +105,7 @@ public struct DockerClient: Sendable {
     public func prune(_ kind: DockerPrune) -> String? {
         guard let path = executable else { return "Docker não encontrado." }
         let steps: [[String]] = switch kind {
-        case .danglingAndBuildCache: [["image", "prune", "-f"], ["builder", "prune", "-f"]]
+        case .danglingAndBuildCache: [["image", "prune", "-f"], ["builder", "prune", "-a", "-f"]]
         case .unusedImages: [["image", "prune", "-a", "-f"]]
         }
         for args in steps {
@@ -138,9 +155,13 @@ public struct DockerClient: Sendable {
         return 0
     }
 
+    private static func shortID(_ id: String) -> String {
+        id.hasPrefix("sha256:") ? String(id.dropFirst(7)) : id
+    }
+
     public static func parseDecimalSize(_ s: String) -> UInt64 {
         let left = s.split(separator: " ").first.map(String.init) ?? ""
-        let units: [(String, Double)] = [("GB", 1e9), ("MB", 1e6), ("kB", 1e3), ("B", 1)]
+        let units: [(String, Double)] = [("TB", 1e12), ("GB", 1e9), ("MB", 1e6), ("kB", 1e3), ("B", 1)]
         for (suffix, factor) in units where left.hasSuffix(suffix) {
             guard let value = Double(left.dropLast(suffix.count)) else { return 0 }
             return UInt64(value * factor)
