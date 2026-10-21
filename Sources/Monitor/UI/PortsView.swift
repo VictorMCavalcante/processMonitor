@@ -45,7 +45,17 @@ struct PortsView: View {
                 }
             }
             if store.portEntries.isEmpty {
-                Text("Nenhuma porta TCP em uso.").foregroundStyle(Theme.muted).font(.system(size: 12)).padding(20)
+                let query = store.search.trimmingCharacters(in: .whitespaces)
+                if query.isEmpty {
+                    Text("Nenhuma porta TCP em uso.").foregroundStyle(Theme.muted).font(.system(size: 12)).padding(20)
+                } else {
+                    VStack(spacing: 8) {
+                        Text("Nenhuma porta corresponde a “\(query)”.").foregroundStyle(Theme.muted)
+                        Button("Limpar busca") { store.search = "" }.buttonStyle(PillButton())
+                    }
+                    .font(.system(size: 12))
+                    .padding(20)
+                }
             }
         }
         .background(RoundedRectangle(cornerRadius: 10).fill(Theme.panel))
