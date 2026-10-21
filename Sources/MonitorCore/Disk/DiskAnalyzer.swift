@@ -4,6 +4,12 @@ public struct DockerDiskUsage: Sendable, Equatable {
     public var danglingAndBuildCache: UInt64
     public var unusedImages: UInt64
     public var unusedImageNames: [String]
+
+    public init(danglingAndBuildCache: UInt64, unusedImages: UInt64, unusedImageNames: [String]) {
+        self.danglingAndBuildCache = danglingAndBuildCache
+        self.unusedImages = unusedImages
+        self.unusedImageNames = unusedImageNames
+    }
 }
 
 public struct DiskReport: Sendable, Equatable {
