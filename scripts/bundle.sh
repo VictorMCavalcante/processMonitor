@@ -9,7 +9,7 @@ cp .build/release/Monitor "$APP/Contents/MacOS/Monitor"
 cp Resources/Info.plist "$APP/Contents/Info.plist"
 codesign --force --sign - "$APP"
 mkdir -p "$HOME/Applications"
-pkill -x Monitor 2>/dev/null || true
+pkill -x Monitor 2>/dev/null && while pgrep -x Monitor >/dev/null; do sleep 0.2; done || true
 rm -rf "$HOME/Applications/Monitor.app"
 cp -R "$APP" "$HOME/Applications/Monitor.app"
 echo "Instalado em $HOME/Applications/Monitor.app"

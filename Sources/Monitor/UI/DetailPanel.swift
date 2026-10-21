@@ -95,13 +95,16 @@ struct DetailPanel: View {
         }
         let plan = store.plan(for: t.group, mode: .normal)
         let blocked: String? = if case .notAllowed(let reason) = plan { reason } else { nil }
-        HStack(spacing: 8) {
-            Button("Fechar") { onClose(t.group, .normal) }.buttonStyle(PillButton(color: Theme.bad)).disabled(blocked != nil)
-            Button("Forçar") { onClose(t.group, .force) }.buttonStyle(PillButton()).disabled(blocked != nil)
+        LazyVGrid(columns: [GridItem(.flexible(), spacing: 8), GridItem(.flexible())], spacing: 8) {
+            Button { onClose(t.group, .normal) } label: { Text("Fechar").frame(maxWidth: .infinity) }
+                .buttonStyle(PillButton(color: Theme.bad)).disabled(blocked != nil)
+            Button { onClose(t.group, .force) } label: { Text("Forçar").frame(maxWidth: .infinity) }
+                .buttonStyle(PillButton()).disabled(blocked != nil)
             if case .quitApp = plan {
-                Button("Reiniciar") { onRestart(t.group) }.buttonStyle(PillButton())
+                Button { onRestart(t.group) } label: { Text("Reiniciar").frame(maxWidth: .infinity) }
+                    .buttonStyle(PillButton())
             }
-            Button("Abrir pasta") { if let cwd = r.snapshot.cwd { NSWorkspace.shared.open(URL(fileURLWithPath: cwd)) } }
+            Button { if let cwd = r.snapshot.cwd { NSWorkspace.shared.open(URL(fileURLWithPath: cwd)) } } label: { Text("Abrir pasta").frame(maxWidth: .infinity) }
                 .buttonStyle(PillButton()).disabled(r.snapshot.cwd == nil)
         }
         .padding(.top, 16)

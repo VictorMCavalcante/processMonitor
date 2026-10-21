@@ -57,6 +57,7 @@ struct PillButton: ButtonStyle {
     func makeBody(configuration: Configuration) -> some View {
         configuration.label
             .font(.system(size: 11.5, weight: .semibold))
+            .lineLimit(1)
             .padding(.horizontal, 11).padding(.vertical, 5)
             .foregroundStyle(color == Theme.panel2 ? Theme.text : textColor)
             .background(RoundedRectangle(cornerRadius: 7).fill(color.opacity(configuration.isPressed ? 0.7 : 1)))
