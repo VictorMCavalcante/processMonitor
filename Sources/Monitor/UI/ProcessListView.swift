@@ -37,7 +37,7 @@ struct ProcessListView: View {
 
     private var header: some View {
         columns(icon: AnyView(Color.clear.frame(width: 20, height: 1)), name: AnyView(Text("NOME")), memory: AnyView(sortButton("MEMÓRIA", .memory)),
-                cpu: AnyView(sortButton("CPU", .cpu)), gpu: AnyView(sortButton("GPU", .gpu)), age: AnyView(Text("ABERTO HÁ")), action: AnyView(Color.clear.frame(width: 22, height: 1)))
+                cpu: AnyView(sortButton("CPU", .cpu).help("Percentual do Mac inteiro, somando todos os núcleos")), gpu: AnyView(sortButton("GPU", .gpu)), age: AnyView(Text("ABERTO HÁ")), action: AnyView(Color.clear.frame(width: 22, height: 1)))
             .font(.system(size: 10.5)).foregroundStyle(Theme.muted2)
             .background(Theme.panel2)
     }
@@ -69,7 +69,7 @@ struct ProcessListView: View {
                 if ignored { Tag(text: "ignorado", color: Theme.accent) }
             }),
             memory: AnyView(MemoryBar(bytes: g.footprintBytes, fraction: Double(g.footprintBytes) / Double(maxBytes), color: isSuspect ? Theme.warn : ignored ? Theme.muted2 : Theme.accent)),
-            cpu: AnyView(Text(Format.cpu(g.cpuPercent, cores: ProcessInfo.processInfo.activeProcessorCount)).help(String(format: "%.1f%% de um núcleo", g.cpuPercent))),
+            cpu: AnyView(Text(Format.cpu(g.cpuPercent, cores: ProcessInfo.processInfo.activeProcessorCount))),
             gpu: AnyView(Text(Format.cpu(g.gpuPercent, cores: 1))),
             age: AnyView(Text(Format.age(since: g.oldestStart, now: store.now))),
             action: AnyView(closeButton(g))
@@ -94,7 +94,7 @@ struct ProcessListView: View {
                 if r.snapshot.state == .stopped { Tag(text: "suspenso", color: Theme.bad) }
             }.padding(.leading, 18)),
             memory: AnyView(Text(Format.bytes(r.snapshot.footprintBytes))),
-            cpu: AnyView(Text(Format.cpu(r.cpuPercent, cores: ProcessInfo.processInfo.activeProcessorCount)).help(String(format: "%.1f%% de um núcleo", r.cpuPercent))),
+            cpu: AnyView(Text(Format.cpu(r.cpuPercent, cores: ProcessInfo.processInfo.activeProcessorCount))),
             gpu: AnyView(Text(Format.cpu(r.gpuPercent, cores: 1))),
             age: AnyView(Text(Format.age(since: r.snapshot.startTime, now: store.now))),
             action: AnyView(closeButton(ProcessWindowModel.single(r)))
@@ -114,7 +114,7 @@ struct ProcessListView: View {
         .buttonStyle(.plain)
         .foregroundStyle(reason == nil ? Theme.muted : Theme.muted2.opacity(0.4))
         .disabled(reason != nil)
-        .help(reason ?? "Fechar")
+        .modifier(DisabledReason(reason: reason))
     }
 
     private func columns(icon: AnyView, name: AnyView, memory: AnyView, cpu: AnyView, gpu: AnyView, age: AnyView, action: AnyView) -> some View {
@@ -166,5 +166,13 @@ struct MemoryBar: View {
 enum ProcessWindowModel {
     static func single(_ r: ProcessRow) -> ProcessGroup {
         TerminationPlanner.singleRowGroup(r, isRunningApp: NSRunningApplication(processIdentifier: r.id) != nil)
+    }
+}
+
+private struct DisabledReason: ViewModifier {
+    let reason: String?
+
+    func body(content: Content) -> some View {
+        if let reason { content.help(reason) } else { content }
     }
 }

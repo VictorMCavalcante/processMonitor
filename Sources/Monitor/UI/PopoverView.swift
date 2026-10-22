@@ -97,6 +97,7 @@ struct PopoverView: View {
             }
             HStack(spacing: 12) {
                 Button("Abrir janela detalhada") {
+                    store.windowVisible = true
                     openWindow(id: "main")
                     NSApp.activate(ignoringOtherApps: true)
                 }
