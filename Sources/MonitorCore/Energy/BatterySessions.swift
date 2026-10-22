@@ -53,7 +53,7 @@ public struct SessionRecorder: Sendable {
     }
 
     public mutating func update(battery: BatteryReading, groups: [ProcessGroup], at now: Date, interval: TimeInterval) -> Bool {
-        let openIndex = sessions.lastIndex { $0.end == nil }
+        var openIndex = sessions.lastIndex { $0.end == nil }
         guard battery.onBattery else {
             guard let i = openIndex else { return false }
             let last = sessions[i].lastSeen ?? sessions[i].start
@@ -66,6 +66,10 @@ public struct SessionRecorder: Sendable {
             totals = [:]
             lastSave = nil
             return true
+        }
+        if let i = openIndex, let last = sessions[i].lastSeen, now.timeIntervalSince(last) > Self.staleAfter, battery.percent > sessions[i].endPercent {
+            sessions[i].end = last
+            openIndex = nil
         }
         guard let i = openIndex else {
             sessions.append(BatterySession(id: UUID(), start: now, end: nil, startPercent: battery.percent, endPercent: battery.percent, awakeSeconds: 0, top: [], reconstructed: false, lastSeen: now))
@@ -111,11 +115,27 @@ public struct BatterySessionStore: Sendable {
             .appendingPathComponent("battery-sessions.json")
     }
 
+    private struct Lossy: Decodable {
+        var value: BatterySession?
+
+        init(from decoder: Decoder) throws {
+            value = try? BatterySession(from: decoder)
+        }
+    }
+
+    public var backupURL: URL { url.appendingPathExtension("bak") }
+
     public func load() -> [BatterySession] {
         guard let data = try? Data(contentsOf: url) else { return [] }
         let decoder = JSONDecoder()
         decoder.dateDecodingStrategy = .secondsSince1970
-        return (try? decoder.decode([BatterySession].self, from: data)) ?? []
+        let items = try? decoder.decode([Lossy].self, from: data)
+        let sessions = items?.compactMap(\.value) ?? []
+        if items?.count != sessions.count {
+            try? FileManager.default.removeItem(at: backupURL)
+            try? FileManager.default.copyItem(at: url, to: backupURL)
+        }
+        return sessions
     }
 
     public func save(_ sessions: [BatterySession]) {
@@ -130,7 +150,7 @@ public struct BatterySessionStore: Sendable {
 public enum SessionInsight {
     public static func compare(_ s: BatterySession, history: [BatterySession]) -> String? {
         let others = history.filter { !$0.reconstructed && $0.id != s.id && ($0.drainPerHour ?? -1) >= 0 }
-        guard let drain = s.drainPerHour, drain >= 0, !others.isEmpty else { return nil }
+        guard !s.reconstructed, let drain = s.drainPerHour, drain >= 0, !others.isEmpty else { return nil }
         let count = Double(others.count)
         let average = others.compactMap(\.drainPerHour).reduce(0, +) / count
         guard average > 0, drain >= 1.5 * average else { return nil }

@@ -10,11 +10,12 @@ public struct BatteryReading: Sendable, Equatable {
     public var healthPercent: Int?
     public var cycles: Int?
     public var temperatureC: Double?
-    public var capacityMah: Int?
+    public var currentMah: Int?
+    public var fullMah: Int?
     public var designMah: Int?
 
     public init(percent: Int, onBattery: Bool, charging: Bool, fullyCharged: Bool, systemMilliwatts: Double?,
-                healthPercent: Int?, cycles: Int?, temperatureC: Double?, capacityMah: Int? = nil, designMah: Int? = nil) {
+                healthPercent: Int?, cycles: Int?, temperatureC: Double?, currentMah: Int? = nil, fullMah: Int? = nil, designMah: Int? = nil) {
         self.percent = percent
         self.onBattery = onBattery
         self.charging = charging
@@ -23,7 +24,8 @@ public struct BatteryReading: Sendable, Equatable {
         self.healthPercent = healthPercent
         self.cycles = cycles
         self.temperatureC = temperatureC
-        self.capacityMah = capacityMah
+        self.currentMah = currentMah
+        self.fullMah = fullMah
         self.designMah = designMah
     }
 }
@@ -65,7 +67,8 @@ public enum BatterySampler {
             healthPercent: health,
             cycles: number(p["CycleCount"]).map { Int($0) },
             temperatureC: number(p["Temperature"]).map { $0 / 100 },
-            capacityMah: number(p["AppleRawMaxCapacity"]).map { Int($0) },
+            currentMah: number(p["AppleRawCurrentCapacity"]).map { Int($0) },
+            fullMah: number(p["AppleRawMaxCapacity"]).map { Int($0) },
             designMah: number(p["DesignCapacity"]).map { Int($0) }
         )
     }
@@ -100,18 +103,20 @@ public struct PowerAverage: Sendable {
 
 public struct BatteryForecast: Sendable {
     private var start: Date?
-    private var samples: [(at: Date, percent: Int)] = []
+    private var samples: [(at: Date, percent: Int, mah: Int?)] = []
+    private var fullMah: Int?
 
     public init() {}
 
-    public mutating func add(percent: Int, onBattery: Bool, at: Date) {
+    public mutating func add(percent: Int, currentMah: Int? = nil, fullMah: Int? = nil, onBattery: Bool, at: Date) {
         guard onBattery else {
             start = nil
             samples = []
             return
         }
         if start == nil { start = at }
-        samples.append((at, percent))
+        self.fullMah = fullMah
+        samples.append((at, percent, currentMah))
         samples.removeAll { $0.at < at.addingTimeInterval(-600) }
     }
 
@@ -119,9 +124,14 @@ public struct BatteryForecast: Sendable {
         guard let start, now.timeIntervalSince(start) >= 180 else { return nil }
         let window = samples.filter { $0.at >= now.addingTimeInterval(-600) }
         guard let first = window.first, let last = window.last else { return nil }
-        let drop = Double(first.percent - last.percent)
         let minutes = last.at.timeIntervalSince(first.at) / 60
-        guard drop >= 1, minutes > 0 else { return nil }
-        return Int((Double(last.percent) / (drop / minutes)).rounded())
+        let (left, drop, minDrop): (Double, Double, Double)
+        if let a = first.mah, let b = last.mah, let full = fullMah, full > 0 {
+            (left, drop, minDrop) = (Double(b), Double(a - b), Double(full) / 100)
+        } else {
+            (left, drop, minDrop) = (Double(last.percent), Double(first.percent - last.percent), 1)
+        }
+        guard drop >= minDrop, drop > 0, minutes > 0 else { return nil }
+        return Int((left / (drop / minutes)).rounded())
     }
 }

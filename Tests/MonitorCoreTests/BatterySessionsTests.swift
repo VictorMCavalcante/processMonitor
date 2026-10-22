@@ -26,12 +26,47 @@ import Testing
     let now = s(25, [EnergyItem(title: "supabase", milliwattHours: 9000), EnergyItem(title: "Arc", milliwattHours: 2000)])
     #expect(SessionInsight.compare(now, history: history) == "Esta sessão gastou 2,5× mais que a sua média; principais diferenças: supabase")
     #expect(SessionInsight.compare(s(12, []), history: history) == nil)
+    var rebuilt = now; rebuilt.reconstructed = true
+    #expect(SessionInsight.compare(rebuilt, history: history) == nil)
 }
 
 @Test func corruptSessionFileLoadsEmpty() throws {
     let url = FileManager.default.temporaryDirectory.appendingPathComponent(UUID().uuidString + ".json")
     try Data("{x".utf8).write(to: url)
-    #expect(BatterySessionStore(url: url).load().isEmpty)
+    let store = BatterySessionStore(url: url)
+    #expect(store.load().isEmpty)
+    #expect(try Data(contentsOf: store.backupURL) == Data("{x".utf8))
+}
+
+@Test func sessionStoreSkipsBadRecords() throws {
+    let url = FileManager.default.temporaryDirectory.appendingPathComponent(UUID().uuidString + ".json")
+    let store = BatterySessionStore(url: url)
+    let good = BatterySession(id: UUID(), start: Date(timeIntervalSince1970: 0), end: nil, startPercent: 90, endPercent: 80, awakeSeconds: 60, top: [], reconstructed: false)
+    store.save([good])
+    let json = String(decoding: try Data(contentsOf: url), as: UTF8.self)
+    try Data((String(json.dropLast()) + ",{\"x\":1}]").utf8).write(to: url)
+    #expect(store.load() == [good])
+    #expect(FileManager.default.fileExists(atPath: store.backupURL.path))
+    store.save([good])
+    try FileManager.default.removeItem(at: store.backupURL)
+    #expect(store.load() == [good])
+    #expect(!FileManager.default.fileExists(atPath: store.backupURL.path))
+}
+
+@Test func relaunchOnBatteryAfterChargingStartsNewSession() {
+    let bat = BatteryReading(percent: 60, onBattery: true, charging: false, fullyCharged: false, systemMilliwatts: nil, healthPercent: nil, cycles: nil, temperatureC: nil)
+    var r = SessionRecorder(sessions: [])
+    _ = r.update(battery: bat, groups: [], at: Date(timeIntervalSince1970: 0), interval: 0)
+    _ = r.update(battery: bat, groups: [], at: Date(timeIntervalSince1970: 3600), interval: 3600)
+    var relaunched = SessionRecorder(sessions: r.sessions)
+    var charged = bat; charged.percent = 100
+    let changed = relaunched.update(battery: charged, groups: [], at: Date(timeIntervalSince1970: 9000), interval: 1)
+    #expect(changed && relaunched.sessions.count == 2)
+    #expect(relaunched.sessions[0].end == Date(timeIntervalSince1970: 3600) && relaunched.sessions[0].endPercent == 60)
+    #expect(relaunched.sessions[1].end == nil && relaunched.sessions[1].startPercent == 100)
+    var same = SessionRecorder(sessions: r.sessions)
+    _ = same.update(battery: bat, groups: [], at: Date(timeIntervalSince1970: 9000), interval: 1)
+    #expect(same.sessions.count == 1 && same.sessions[0].end == nil)
 }
 
 @Test func recorderSavesPeriodicallyMergesAndCaps() {

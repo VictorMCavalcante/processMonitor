@@ -1,5 +1,4 @@
 import AppKit
-import CoreGraphics
 import Foundation
 import MonitorCore
 import Observation
@@ -20,7 +19,11 @@ final class MonitorStore {
     var mode: GroupingMode = .byApp
     var sort: GroupSort = .memory
     var search = ""
-    var windowVisible = false
+    var windowVisible = false {
+        didSet {
+            if windowVisible && !oldValue { Task { await refresh() } }
+        }
+    }
     var lastMessage: String?
     var now = Date()
     let ignore = IgnoreList()
@@ -59,7 +62,7 @@ final class MonitorStore {
     var battery: BatteryReading?
     var minutesLeft: Int?
     var averageSystemMilliwatts: Double?
-    var sleepBlockers: [SleepBlocker] = []
+    var sleepBlockers: [SleepBlocker]?
     var powerLog = PowerLogSummary.empty
     var powerLogLoading = false
     var batterySessions: [BatterySession] = []
@@ -73,6 +76,7 @@ final class MonitorStore {
     @ObservationIgnored private var lastCycle: Date?
     @ObservationIgnored private var lastPowerLog = Date.distantPast
     @ObservationIgnored private var healthLoading = false
+    @ObservationIgnored private var quietSince: [Int32: Date] = [:]
 
     var groups: [ProcessGroup] {
         let query = search.trimmingCharacters(in: .whitespaces).lowercased()
@@ -87,9 +91,9 @@ final class MonitorStore {
     var energyGroups: [ProcessGroup] { Grouping.group(rows, mode: .byApp, sort: .energy) }
 
     func energySuggestions(_ groups: [ProcessGroup]) -> [EnergySuggestion] {
-        let idle = CGEventSource.secondsSinceLastEventType(.combinedSessionState, eventType: CGEventType(rawValue: UInt32.max) ?? .null)
-        return EnergyAdvisor.suggestions(groups: groups, runaways: runaways, blockers: sleepBlockers, log: powerLog,
-                                         onBattery: battery?.onBattery ?? false, userIdleSeconds: idle, now: now)
+        let closable = (sleepBlockers ?? []).filter { ownerGroup($0.ownerPid) != nil }
+        return EnergyAdvisor.suggestions(groups: groups, runaways: runaways, blockers: closable, log: powerLog,
+                                         onBattery: battery?.onBattery ?? false, quietSince: quietSince, now: now)
     }
 
     func ownerGroup(_ pid: Int32) -> ProcessGroup? {
@@ -302,9 +306,9 @@ final class MonitorStore {
         let scanPorts = Date().timeIntervalSince(lastPortScan) >= 15
         let visible = windowVisible
         let previous = rows
-        let (snaps, newSockets, gpuReading, batteryReading, blockers) = await Task.detached(priority: .utility) { () -> ([ProcessSnapshot], [ListeningSocket]?, GPUReading?, BatteryReading?, [SleepBlocker]) in
+        let (snaps, newSockets, gpuReading, batteryReading, blockers) = await Task.detached(priority: .utility) { () -> ([ProcessSnapshot], [ListeningSocket]?, GPUReading?, BatteryReading?, [SleepBlocker]?) in
             let snaps = ProcessSampler().sample()
-            let blockers = visible ? Self.arrange(SleepBlockers.build(SleepBlockers.read(now: Date()), rows: previous, all: snaps, now: Date()), rows: previous) : []
+            let blockers = visible ? Self.arrange(SleepBlockers.build(SleepBlockers.read(now: Date()), rows: previous, all: snaps, now: Date()), rows: previous) : nil
             return (snaps, scanPorts ? PortScanner.scanSockets() : nil, GPUSampler.read(), BatterySampler.read(), blockers)
         }.value
         if let newSockets {
@@ -338,7 +342,7 @@ final class MonitorStore {
         battery = batteryReading
         let onBattery = batteryReading?.onBattery ?? false
         if let b = batteryReading {
-            forecast.add(percent: b.percent, onBattery: b.onBattery, at: at)
+            forecast.add(percent: b.percent, currentMah: b.currentMah, fullMah: b.fullMah, onBattery: b.onBattery, at: at)
             if let m = forecast.minutesLeft(now: at) {
                 minutesLeft = m
                 forecastAt = at
@@ -348,7 +352,8 @@ final class MonitorStore {
             if let mw = b.systemMilliwatts { powerAverage.add(mw, at: at) }
             averageSystemMilliwatts = powerAverage.milliwatts(now: at)
         }
-        sleepBlockers = blockers
+        sleepBlockers = blockers ?? (windowVisible ? sleepBlockers : nil)
+        quietSince = Dictionary(rows.filter { $0.cpuPercent < 1 }.map { ($0.id, quietSince[$0.id] ?? at) }, uniquingKeysWith: { a, _ in a })
         var nextStopped: [String: Date] = [:]
         var stoppedByPid: [Int32: Date] = [:]
         for snap in live where snap.state == .stopped {

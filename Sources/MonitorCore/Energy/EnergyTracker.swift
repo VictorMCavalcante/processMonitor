@@ -28,7 +28,7 @@ public struct EnergyTracker: Sendable {
         var result: [Int32: EnergyRate] = [:]
         var next: [Int32: Entry] = [:]
         let cutoff = now.addingTimeInterval(-window)
-        for s in snaps {
+        for s in snaps where s.energyNj > 0 {
             guard var e = entries[s.id], e.start == s.startTime, let last = e.history.last,
                   s.energyNj >= last.nj, now > last.at else {
                 result[s.id] = EnergyRate(milliwatts: 0, wakeupsPerSecond: 0)

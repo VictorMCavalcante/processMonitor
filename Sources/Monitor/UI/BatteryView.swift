@@ -26,10 +26,11 @@ enum BatteryText {
 struct BatteryView: View {
     let store: MonitorStore
     let onClose: (ProcessGroup, Bool) -> Void
+    @State private var energyMode = GroupingMode.byApp
 
     var body: some View {
         let groups = store.energyGroups
-        let shown = groups.filter { $0.milliwatts > 0 }
+        let shown = (energyMode == .byApp ? groups : Grouping.group(store.rows, mode: energyMode, sort: .energy)).filter { $0.milliwatts > 0 }
         ScrollView {
             VStack(alignment: .leading, spacing: 14) {
                 cards
@@ -55,7 +56,7 @@ struct BatteryView: View {
             card("Previsão", b?.onBattery == true ? BatteryText.forecast(store.minutesLeft) : "–", note: b?.onBattery == true ? "no ritmo dos últimos 10 min" : "na tomada")
             if let b {
                 card("Saúde", (store.appleHealth ?? b.healthPercent).map { "\($0)%" } ?? "–", note: health(b))
-                    .help(b.capacityMah.flatMap { cap in b.designMah.map { "Segura \(cap) de \($0) mAh (\(b.healthPercent ?? 0)%, estimado)" } } ?? "")
+                    .help(b.fullMah.flatMap { cap in b.designMah.map { "Segura \(cap) de \($0) mAh (\(b.healthPercent ?? 0)%, estimado)" } } ?? "")
             }
         }
     }
@@ -96,11 +97,19 @@ struct BatteryView: View {
     private func consumers(_ groups: [ProcessGroup]) -> some View {
         let total = groups.reduce(0) { $0 + $1.milliwatts }
         return section("Quem está gastando agora") {
+            line {
+                Picker("", selection: $energyMode) {
+                    Text("Por app").tag(GroupingMode.byApp)
+                    Text("Por projeto").tag(GroupingMode.byProject)
+                }
+                .pickerStyle(.segmented).labelsHidden().fixedSize()
+                Spacer()
+            }
             ForEach(groups.prefix(12)) { g in
                 line {
                     AppIcon(title: g.title, appPath: g.rows.first?.identified.appBundlePath).frame(width: 22)
                     Text(g.title).fontWeight(.semibold).lineLimit(1)
-                    Text(EnergyAdvisor.reason(g, blockers: store.sleepBlockers)).foregroundStyle(Theme.muted).lineLimit(1)
+                    Text(EnergyAdvisor.reason(g, blockers: store.sleepBlockers ?? [], now: store.now)).foregroundStyle(Theme.muted).lineLimit(1)
                     Spacer()
                     Text("~\(Int(g.milliwatts.rounded())) mW").frame(width: 90, alignment: .trailing)
                     Text(total > 0 ? "\(Int((g.milliwatts / total * 100).rounded()))%" : "–").foregroundStyle(Theme.muted).frame(width: 44, alignment: .trailing)
@@ -123,7 +132,7 @@ struct BatteryView: View {
 
     private var blockers: some View {
         section("Impedindo o Mac de dormir") {
-            ForEach(store.sleepBlockers) { b in
+            ForEach(store.sleepBlockers ?? []) { b in
                 line {
                     Image(systemName: "moon.zzz").foregroundStyle(Theme.warn).frame(width: 22)
                     Text(b.title).lineLimit(1)
@@ -134,7 +143,11 @@ struct BatteryView: View {
                     }
                 }
             }
-            if store.sleepBlockers.isEmpty { empty("Nada impede o Mac de dormir.") }
+            if let list = store.sleepBlockers {
+                if list.isEmpty { empty("Nada impede o Mac de dormir.") }
+            } else {
+                empty("Lendo…")
+            }
         }
     }
 
