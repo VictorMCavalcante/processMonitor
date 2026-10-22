@@ -36,3 +36,11 @@ import Testing
     #expect(snap?.state == .stopped)
     #expect(snap?.arguments == ["/bin/sleep", "30"])
 }
+
+@Test func ttyNameIsCachedPerDevice() {
+    let dev: UInt32 = (16 << 24) | 0
+    let first = ProcessSampler.ttyName(dev)
+    #expect(ProcessSampler.ttyName(dev) == first)
+    #expect(ProcessSampler.ttyCacheCount >= 1)
+    #expect(ProcessSampler.ttyName(0) == nil && ProcessSampler.ttyName(UInt32.max) == nil)
+}
