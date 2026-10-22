@@ -6,7 +6,7 @@ import Testing
     let p: [String: Any] = ["CurrentCapacity": 64, "MaxCapacity": 100, "ExternalConnected": false, "IsCharging": false, "FullyCharged": false,
                             "AppleRawMaxCapacity": 5513, "DesignCapacity": 6249, "CycleCount": 113, "Temperature": 3113,
                             "PowerTelemetryData": ["SystemLoad": 23246]]
-    #expect(BatterySampler.parse(p) == BatteryReading(percent: 64, onBattery: true, charging: false, fullyCharged: false, systemMilliwatts: 23246, healthPercent: 88, cycles: 113, temperatureC: 31.13))
+    #expect(BatterySampler.parse(p) == BatteryReading(percent: 64, onBattery: true, charging: false, fullyCharged: false, systemMilliwatts: 23246, healthPercent: 88, cycles: 113, temperatureC: 31.13, capacityMah: 5513, designMah: 6249))
     #expect(BatterySampler.parse([:]) == nil)
 }
 
@@ -19,6 +19,11 @@ import Testing
     #expect(f.minutesLeft(now: t0.addingTimeInterval(240)) == 156)
     f.add(percent: 78, onBattery: false, at: t0.addingTimeInterval(250))
     #expect(f.minutesLeft(now: t0.addingTimeInterval(250)) == nil)
+}
+
+@Test func parsesAppleMaximumCapacity() {
+    #expect(BatteryHealth.parseSystemProfiler("      Health Information:\n          Cycle Count: 113\n          Condition: Normal\n          Maximum Capacity: 93%\n") == 93)
+    #expect(BatteryHealth.parseSystemProfiler("Power:\n    AC Charger Information:\n") == nil)
 }
 
 @Test func realBatteryReadDoesNotCrash() { _ = BatterySampler.read() }

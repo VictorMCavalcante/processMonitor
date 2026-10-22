@@ -10,9 +10,11 @@ public struct BatteryReading: Sendable, Equatable {
     public var healthPercent: Int?
     public var cycles: Int?
     public var temperatureC: Double?
+    public var capacityMah: Int?
+    public var designMah: Int?
 
     public init(percent: Int, onBattery: Bool, charging: Bool, fullyCharged: Bool, systemMilliwatts: Double?,
-                healthPercent: Int?, cycles: Int?, temperatureC: Double?) {
+                healthPercent: Int?, cycles: Int?, temperatureC: Double?, capacityMah: Int? = nil, designMah: Int? = nil) {
         self.percent = percent
         self.onBattery = onBattery
         self.charging = charging
@@ -21,6 +23,8 @@ public struct BatteryReading: Sendable, Equatable {
         self.healthPercent = healthPercent
         self.cycles = cycles
         self.temperatureC = temperatureC
+        self.capacityMah = capacityMah
+        self.designMah = designMah
     }
 }
 
@@ -56,12 +60,21 @@ public enum BatterySampler {
             systemMilliwatts: number((p["PowerTelemetryData"] as? [String: Any])?["SystemLoad"]),
             healthPercent: health,
             cycles: number(p["CycleCount"]).map { Int($0) },
-            temperatureC: number(p["Temperature"]).map { $0 / 100 }
+            temperatureC: number(p["Temperature"]).map { $0 / 100 },
+            capacityMah: number(p["AppleRawMaxCapacity"]).map { Int($0) },
+            designMah: number(p["DesignCapacity"]).map { Int($0) }
         )
     }
 
     private static func number(_ v: Any?) -> Double? {
         (v as? NSNumber)?.doubleValue
+    }
+}
+
+public enum BatteryHealth {
+    public static func parseSystemProfiler(_ text: String) -> Int? {
+        guard let match = text.firstMatch(of: /Maximum Capacity: (\d+)%/) else { return nil }
+        return Int(match.1)
     }
 }
 
