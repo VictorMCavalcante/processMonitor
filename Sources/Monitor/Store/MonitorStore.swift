@@ -1,4 +1,5 @@
 import AppKit
+import CoreGraphics
 import Foundation
 import MonitorCore
 import Observation
@@ -55,15 +56,45 @@ final class MonitorStore {
     @ObservationIgnored private var loop: Task<Void, Never>?
     @ObservationIgnored private var stoppedSince: [String: Date] = [:]
     @ObservationIgnored var onCycle: (@MainActor (MonitorStore) -> Void)?
+    var battery: BatteryReading?
+    var minutesLeft: Int?
+    var sleepBlockers: [SleepBlocker] = []
+    var powerLog = PowerLogSummary.empty
+    var powerLogLoading = false
+    var batterySessions: [BatterySession] = []
+    var appleHealth: Int?
+    @ObservationIgnored private var energyTracker = EnergyTracker()
+    @ObservationIgnored private var forecast = BatteryForecast()
+    @ObservationIgnored private var sessionRecorder = SessionRecorder(sessions: BatterySessionStore(url: BatterySessionStore.defaultURL).load())
+    @ObservationIgnored private let sessionStore = BatterySessionStore(url: BatterySessionStore.defaultURL)
+    @ObservationIgnored private var lastCycle: Date?
+    @ObservationIgnored private var lastPowerLog = Date.distantPast
+    @ObservationIgnored private var healthLoading = false
 
-    var groups: [ProcessGroup] {
+    private var filteredRows: [ProcessRow] {
         let query = search.trimmingCharacters(in: .whitespaces).lowercased()
-        let filtered = query.isEmpty ? rows : rows.filter { row in
+        return query.isEmpty ? rows : rows.filter { row in
             let id = row.identified
             let fields = [id.title, id.subtitle ?? "", id.project ?? "", row.snapshot.name] + row.ports.map(String.init)
             return fields.contains { $0.lowercased().contains(query) }
         }
-        return Grouping.group(filtered, mode: mode, sort: sort)
+    }
+
+    var groups: [ProcessGroup] { Grouping.group(filteredRows, mode: mode, sort: sort) }
+
+    var energyGroups: [ProcessGroup] { Grouping.group(filteredRows, mode: mode, sort: .energy).filter { $0.milliwatts > 0 } }
+
+    func energySuggestions(_ groups: [ProcessGroup]) -> [EnergySuggestion] {
+        let idle = CGEventSource.secondsSinceLastEventType(.combinedSessionState, eventType: CGEventType(rawValue: ~0)!)
+        return EnergyAdvisor.suggestions(groups: groups, runaways: runaways, blockers: sleepBlockers, log: powerLog,
+                                         onBattery: battery?.onBattery ?? false, userIdleSeconds: idle, now: now)
+    }
+
+    func ownerGroup(_ pid: Int32) -> ProcessGroup? {
+        guard let row = rows.first(where: { $0.id == pid }) else { return nil }
+        let group = ProcessWindowModel.single(row)
+        if case .notAllowed = plan(for: group, mode: .normal) { return nil }
+        return group
     }
 
     var suspectBytes: UInt64 { suspects.reduce(0) { $0 + $1.row.snapshot.footprintBytes } }
@@ -71,6 +102,38 @@ final class MonitorStore {
     init() {
         peakRecorder = PeakRecorder(episodes: PeakStore(url: PeakStore.defaultURL).load())
         peaks = peakRecorder.episodes
+        batterySessions = sessionRecorder.sessions
+        appleHealth = UserDefaults.standard.object(forKey: Self.healthKey) as? Int
+    }
+
+    private static let healthKey = "appleBatteryHealth"
+    private static let healthDateKey = "appleBatteryHealthAt"
+
+    func openBatteryTab() async {
+        let checked = UserDefaults.standard.object(forKey: Self.healthDateKey) as? Date ?? .distantPast
+        if battery != nil, !healthLoading, Date().timeIntervalSince(checked) >= 86_400 {
+            healthLoading = true
+            Task {
+                let value = await Task.detached(priority: .utility) {
+                    SystemCommandRunner().run("/usr/sbin/system_profiler", ["SPPowerDataType"], timeout: 10).flatMap { BatteryHealth.parseSystemProfiler($0.output) }
+                }.value
+                if let value {
+                    appleHealth = value
+                    UserDefaults.standard.set(value, forKey: Self.healthKey)
+                    UserDefaults.standard.set(Date(), forKey: Self.healthDateKey)
+                }
+                healthLoading = false
+            }
+        }
+        guard battery != nil, !powerLogLoading, Date().timeIntervalSince(lastPowerLog) >= 600 else { return }
+        powerLogLoading = true
+        let log = await Task.detached(priority: .utility) { PowerLog.load() }.value
+        powerLog = log
+        lastPowerLog = Date()
+        powerLogLoading = false
+        sessionRecorder.merge(log.sessions)
+        batterySessions = sessionRecorder.sessions
+        sessionStore.save(batterySessions)
     }
 
     var portEntries: [PortEntry] {
@@ -235,8 +298,8 @@ final class MonitorStore {
 
     func refresh() async {
         let scanPorts = Date().timeIntervalSince(lastPortScan) >= 15
-        let (snaps, newSockets, gpuReading) = await Task.detached(priority: .utility) { () -> ([ProcessSnapshot], [ListeningSocket]?, GPUReading?) in
-            (ProcessSampler().sample(), scanPorts ? PortScanner.scanSockets() : nil, GPUSampler.read())
+        let (snaps, newSockets, gpuReading, batteryReading) = await Task.detached(priority: .utility) { () -> ([ProcessSnapshot], [ListeningSocket]?, GPUReading?, BatteryReading?) in
+            (ProcessSampler().sample(), scanPorts ? PortScanner.scanSockets() : nil, GPUSampler.read(), BatterySampler.read())
         }.value
         if let newSockets {
             sockets = newSockets
@@ -256,14 +319,23 @@ final class MonitorStore {
         if let g = s.gpuPercent { history["gpu"]?.append(g) }
         let cpu = cpuTracker.update(snaps, at: at)
         let gpu = gpuReading.map { r in gpuTracker.update(r.perPid, starts: Dictionary(snaps.map { ($0.id, $0.startTime) }, uniquingKeysWith: { a, _ in a }), at: at) } ?? [:]
+        let energy = energyTracker.update(snaps, at: at)
         let live = snaps.filter { $0.state != .zombie && $0.id != getpid() }
         allSnapshots = snaps
         let context = ClassifyContext(dockerRunning: Classifier.dockerRunning(in: snaps))
         dockerRunning = context.dockerRunning
         rows = live.map { snap in
             let p = ports[snap.id] ?? []
-            return ProcessRow(snapshot: snap, identified: Classifier.classify(snap, ports: p, context: context), cpuPercent: cpu[snap.id] ?? 0, ports: p, gpuPercent: gpu[snap.id] ?? 0)
+            return ProcessRow(snapshot: snap, identified: Classifier.classify(snap, ports: p, context: context), cpuPercent: cpu[snap.id] ?? 0, ports: p, gpuPercent: gpu[snap.id] ?? 0,
+                              milliwatts: energy[snap.id]?.milliwatts ?? 0, wakeupsPerSecond: energy[snap.id]?.wakeupsPerSecond ?? 0)
         }
+        battery = batteryReading
+        let onBattery = batteryReading?.onBattery ?? false
+        if let b = batteryReading {
+            forecast.add(percent: b.percent, onBattery: b.onBattery, at: at)
+            if let m = forecast.minutesLeft(now: at) { minutesLeft = m } else if !onBattery { minutesLeft = nil }
+        }
+        sleepBlockers = Self.arrange(SleepBlockers.build(SleepBlockers.read(now: at), rows: rows, all: snaps, now: at), rows: rows)
         var nextStopped: [String: Date] = [:]
         var stoppedByPid: [Int32: Date] = [:]
         for snap in live where snap.state == .stopped {
@@ -274,8 +346,17 @@ final class MonitorStore {
         }
         stoppedSince = nextStopped
         suspects = ForgottenDetector.detect(rows, allPids: Set(snaps.map(\.id)), now: at, ignore: ignore, stoppedSince: stoppedByPid)
-        runaways = runawayTracker.update(rows, at: at, myUid: getuid(), ignore: ignore)
-        if peakRecorder.update(stats: s, groups: Grouping.group(rows, mode: .byApp), at: at) {
+        runaways = runawayTracker.update(rows, at: at, myUid: getuid(), ignore: ignore, onBattery: onBattery)
+        let appGroups = Grouping.group(rows, mode: .byApp)
+        if let b = batteryReading {
+            let interval = min(lastCycle.map { at.timeIntervalSince($0) } ?? 0, 3 * (windowVisible ? 3 : 10))
+            if sessionRecorder.update(battery: b, groups: appGroups, at: at, interval: max(0, interval)) {
+                batterySessions = sessionRecorder.sessions
+                sessionStore.save(batterySessions)
+            }
+        }
+        lastCycle = at
+        if peakRecorder.update(stats: s, groups: appGroups, at: at) {
             peakStore.save(peakRecorder.episodes)
         }
         if at.timeIntervalSince(lastPrune) >= 3600 {
@@ -298,6 +379,17 @@ final class MonitorStore {
             containers = []
         }
         onCycle?(self)
+    }
+
+    private static func arrange(_ blockers: [SleepBlocker], rows: [ProcessRow]) -> [SleepBlocker] {
+        let sorted = blockers.sorted { ($0.since ?? .distantFuture, $0.id) < ($1.since ?? .distantFuture, $1.id) }
+        let counts = Dictionary(sorted.map { ($0.title, 1) }, uniquingKeysWith: +)
+        return sorted.map { b in
+            guard counts[b.title, default: 0] > 1, let project = rows.first(where: { $0.id == b.ownerPid })?.identified.project else { return b }
+            var copy = b
+            copy.title += " · \(project)"
+            return copy
+        }
     }
 
     func plan(for group: ProcessGroup, mode: TerminationMode) -> TerminationPlan {

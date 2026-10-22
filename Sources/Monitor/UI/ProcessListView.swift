@@ -106,15 +106,7 @@ struct ProcessListView: View {
     }
 
     private func closeButton(_ g: ProcessGroup) -> some View {
-        let plan = store.plan(for: g, mode: .normal)
-        let reason: String? = if case .notAllowed(let r) = plan { r } else { nil }
-        return Button { onClose(g) } label: {
-            Image(systemName: "xmark").font(.system(size: 10, weight: .bold))
-        }
-        .buttonStyle(.plain)
-        .foregroundStyle(reason == nil ? Theme.muted : Theme.muted2.opacity(0.4))
-        .disabled(reason != nil)
-        .modifier(DisabledReason(reason: reason))
+        CloseButton(store: store, group: g) { onClose(g) }
     }
 
     private func columns(icon: AnyView, name: AnyView, memory: AnyView, cpu: AnyView, gpu: AnyView, age: AnyView, action: AnyView) -> some View {
@@ -130,6 +122,23 @@ struct ProcessListView: View {
         .font(.system(size: 12))
         .padding(.horizontal, 12).padding(.vertical, 8)
         .overlay(alignment: .top) { Theme.line.frame(height: 1) }
+    }
+}
+
+struct CloseButton: View {
+    let store: MonitorStore
+    let group: ProcessGroup
+    let action: () -> Void
+
+    var body: some View {
+        let reason: String? = if case .notAllowed(let r) = store.plan(for: group, mode: .normal) { r } else { nil }
+        Button(action: action) {
+            Image(systemName: "xmark").font(.system(size: 10, weight: .bold))
+        }
+        .buttonStyle(.plain)
+        .foregroundStyle(reason == nil ? Theme.muted : Theme.muted2.opacity(0.4))
+        .disabled(reason != nil)
+        .modifier(DisabledReason(reason: reason))
     }
 }
 

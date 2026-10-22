@@ -29,6 +29,15 @@ struct PopoverView: View {
                         .foregroundStyle(Theme.muted)
                     Text("CPU \(Int(s.cpuPercent))%" + (s.gpuPercent.map { " · GPU \(Int($0))%" } ?? "")).foregroundStyle(Theme.muted)
                 }
+                if let b = store.battery, b.onBattery {
+                    Text("Bateria \(b.percent)%" + (b.systemMilliwatts.map { " · " + BatteryText.watts($0) } ?? "") + " · " + BatteryText.forecast(store.minutesLeft))
+                        .foregroundStyle(Theme.muted)
+                    let groups = Grouping.group(store.rows, mode: .byApp, sort: .energy)
+                    let total = groups.reduce(0) { $0 + $1.milliwatts }
+                    if let top = groups.first, total > 0, top.milliwatts > total * 0.3 {
+                        Text("Maior consumo: \(top.title)").foregroundStyle(Theme.warn).lineLimit(1)
+                    }
+                }
             }
             .font(.system(size: 12))
         }

@@ -7,6 +7,7 @@ enum WindowTab: Hashable {
     case docker
     case peaks
     case disk
+    case battery
 }
 
 enum PendingAction {
@@ -137,6 +138,7 @@ struct MainWindow: View {
             if store.dockerRunning { tabButton("Docker", .docker) }
             tabButton("Picos", .peaks)
             tabButton("Disco", .disk)
+            tabButton("Bateria", .battery)
             Spacer()
         }
         .font(.system(size: 12.5))
@@ -176,6 +178,7 @@ struct MainWindow: View {
         tab = new
         if case .processes(let m) = new { store.mode = m }
         if new == .disk { Task { await store.openDiskTab() } }
+        if new == .battery { Task { await store.openBatteryTab() } }
     }
 
     private var selectedGroup: ProcessGroup? {
@@ -202,6 +205,8 @@ struct MainWindow: View {
             PeaksView(store: store)
         case .disk:
             DiskView(store: store) { pending = .cleanDisk($0) }
+        case .battery:
+            BatteryView(store: store) { request($0, .normal, confirm: $1) }
         }
     }
 
@@ -250,14 +255,14 @@ struct MainWindow: View {
         }
     }
 
-    private func request(_ group: ProcessGroup, _ mode: TerminationMode, after: (@MainActor () -> Void)? = nil) {
+    private func request(_ group: ProcessGroup, _ mode: TerminationMode, confirm: Bool = false, after: (@MainActor () -> Void)? = nil) {
         let isDocker = group.rows.first?.identified.appBundlePath == Classifier.dockerAppPath
         if isDocker {
             Task {
                 let count = await store.dockerRunningCount()
                 pending = .close(group, mode, dockerContainers: count)
             }
-        } else if TerminationPlanner.needsConfirmation(group, all: store.allSnapshots, myUid: getuid()) || mode == .force {
+        } else if TerminationPlanner.needsConfirmation(group, all: store.allSnapshots, myUid: getuid()) || mode == .force || confirm {
             pending = .close(group, mode, dockerContainers: nil)
         } else {
             Task {
