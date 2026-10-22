@@ -15,4 +15,4 @@ pkill -x Monitor 2>/dev/null && while pgrep -x Monitor >/dev/null; do sleep 0.2;
 rm -rf "$HOME/Applications/Monitor.app" "$HOME/Applications/Vernio.app"
 cp -R "$APP" "$HOME/Applications/Vernio.app"
 echo "Instalado em $HOME/Applications/Vernio.app"
-open "$HOME/Applications/Vernio.app"
+for i in 1 2 3 4 5; do open "$HOME/Applications/Vernio.app" 2>/dev/null && break; sleep 1; done

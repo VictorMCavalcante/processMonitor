@@ -47,7 +47,7 @@ public struct ProcessSampler: Sendable {
             state: base.state,
             footprintBytes: rusageOK ? usage.ri_phys_footprint : 0,
             cpuTimeNs: cpuAbs * timebase.numer / timebase.denom,
-            ttyName: Self.tty(base.tdev)
+            ttyName: Self.ttyName(base.tdev)
         )
     }
 
@@ -110,9 +110,15 @@ public struct ProcessSampler: Sendable {
         return value.isEmpty ? nil : value
     }
 
-    private static func tty(_ dev: UInt32) -> String? {
-        guard dev != UInt32.max, dev != 0, let name = devname(dev_t(bitPattern: dev), mode_t(S_IFCHR)) else { return nil }
-        return String(cString: name)
+    private static let ttyCache = TTYCache()
+
+    static var ttyCacheCount: Int { ttyCache.count }
+
+    static func ttyName(_ dev: UInt32) -> String? {
+        guard dev != UInt32.max, dev != 0 else { return nil }
+        return ttyCache.name(for: dev) {
+            devname(dev_t(bitPattern: dev), mode_t(S_IFCHR)).map { String(cString: $0) }
+        }
     }
 
     static func arguments(_ pid: Int32) -> [String] {
@@ -133,5 +139,19 @@ public struct ProcessSampler: Sendable {
             index += 1
         }
         return result
+    }
+}
+
+private final class TTYCache: @unchecked Sendable {
+    private let lock = NSLock()
+    private var names: [UInt32: String?] = [:]
+
+    var count: Int { lock.withLock { names.count } }
+
+    func name(for dev: UInt32, resolve: () -> String?) -> String? {
+        if let cached = lock.withLock({ names[dev] }) { return cached }
+        let value = resolve()
+        lock.withLock { names[dev] = value }
+        return value
     }
 }
