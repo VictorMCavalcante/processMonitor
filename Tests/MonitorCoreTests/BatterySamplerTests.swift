@@ -26,4 +26,16 @@ import Testing
     #expect(BatteryHealth.parseSystemProfiler("Power:\n    AC Charger Information:\n") == nil)
 }
 
+@Test func powerAverageUsesLastTenMinutes() {
+    var a = PowerAverage(); let t0 = Date(timeIntervalSince1970: 0)
+    #expect(a.milliwatts(now: t0) == nil)
+    a.add(30000, at: t0)
+    a.add(10000, at: t0.addingTimeInterval(300))
+    a.add(20000, at: t0.addingTimeInterval(600))
+    #expect(a.milliwatts(now: t0.addingTimeInterval(600)) == 20000)
+    a.add(20000, at: t0.addingTimeInterval(700))
+    #expect(a.milliwatts(now: t0.addingTimeInterval(700)) == 50000.0 / 3)
+    #expect(a.milliwatts(now: t0.addingTimeInterval(1400)) == nil)
+}
+
 @Test func realBatteryReadDoesNotCrash() { _ = BatterySampler.read() }

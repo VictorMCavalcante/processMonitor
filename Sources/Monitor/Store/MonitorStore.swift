@@ -58,6 +58,7 @@ final class MonitorStore {
     @ObservationIgnored var onCycle: (@MainActor (MonitorStore) -> Void)?
     var battery: BatteryReading?
     var minutesLeft: Int?
+    var averageSystemMilliwatts: Double?
     var sleepBlockers: [SleepBlocker] = []
     var powerLog = PowerLogSummary.empty
     var powerLogLoading = false
@@ -65,27 +66,28 @@ final class MonitorStore {
     var appleHealth: Int?
     @ObservationIgnored private var energyTracker = EnergyTracker()
     @ObservationIgnored private var forecast = BatteryForecast()
+    @ObservationIgnored private var forecastAt: Date?
+    @ObservationIgnored private var powerAverage = PowerAverage()
     @ObservationIgnored private var sessionRecorder = SessionRecorder(sessions: BatterySessionStore(url: BatterySessionStore.defaultURL).load())
     @ObservationIgnored private let sessionStore = BatterySessionStore(url: BatterySessionStore.defaultURL)
     @ObservationIgnored private var lastCycle: Date?
     @ObservationIgnored private var lastPowerLog = Date.distantPast
     @ObservationIgnored private var healthLoading = false
 
-    private var filteredRows: [ProcessRow] {
+    var groups: [ProcessGroup] {
         let query = search.trimmingCharacters(in: .whitespaces).lowercased()
-        return query.isEmpty ? rows : rows.filter { row in
+        let filtered = query.isEmpty ? rows : rows.filter { row in
             let id = row.identified
             let fields = [id.title, id.subtitle ?? "", id.project ?? "", row.snapshot.name] + row.ports.map(String.init)
             return fields.contains { $0.lowercased().contains(query) }
         }
+        return Grouping.group(filtered, mode: mode, sort: sort)
     }
 
-    var groups: [ProcessGroup] { Grouping.group(filteredRows, mode: mode, sort: sort) }
-
-    var energyGroups: [ProcessGroup] { Grouping.group(filteredRows, mode: mode, sort: .energy).filter { $0.milliwatts > 0 } }
+    var energyGroups: [ProcessGroup] { Grouping.group(rows, mode: .byApp, sort: .energy) }
 
     func energySuggestions(_ groups: [ProcessGroup]) -> [EnergySuggestion] {
-        let idle = CGEventSource.secondsSinceLastEventType(.combinedSessionState, eventType: CGEventType(rawValue: ~0)!)
+        let idle = CGEventSource.secondsSinceLastEventType(.combinedSessionState, eventType: CGEventType(rawValue: UInt32.max) ?? .null)
         return EnergyAdvisor.suggestions(groups: groups, runaways: runaways, blockers: sleepBlockers, log: powerLog,
                                          onBattery: battery?.onBattery ?? false, userIdleSeconds: idle, now: now)
     }
@@ -111,7 +113,7 @@ final class MonitorStore {
 
     func openBatteryTab() async {
         let checked = UserDefaults.standard.object(forKey: Self.healthDateKey) as? Date ?? .distantPast
-        if battery != nil, !healthLoading, Date().timeIntervalSince(checked) >= 86_400 {
+        if !healthLoading, Date().timeIntervalSince(checked) >= 86_400 {
             healthLoading = true
             Task {
                 let value = await Task.detached(priority: .utility) {
@@ -120,12 +122,12 @@ final class MonitorStore {
                 if let value {
                     appleHealth = value
                     UserDefaults.standard.set(value, forKey: Self.healthKey)
-                    UserDefaults.standard.set(Date(), forKey: Self.healthDateKey)
                 }
+                UserDefaults.standard.set(Date(), forKey: Self.healthDateKey)
                 healthLoading = false
             }
         }
-        guard battery != nil, !powerLogLoading, Date().timeIntervalSince(lastPowerLog) >= 600 else { return }
+        guard !powerLogLoading, Date().timeIntervalSince(lastPowerLog) >= 600 else { return }
         powerLogLoading = true
         let log = await Task.detached(priority: .utility) { PowerLog.load() }.value
         powerLog = log
@@ -298,8 +300,12 @@ final class MonitorStore {
 
     func refresh() async {
         let scanPorts = Date().timeIntervalSince(lastPortScan) >= 15
-        let (snaps, newSockets, gpuReading, batteryReading) = await Task.detached(priority: .utility) { () -> ([ProcessSnapshot], [ListeningSocket]?, GPUReading?, BatteryReading?) in
-            (ProcessSampler().sample(), scanPorts ? PortScanner.scanSockets() : nil, GPUSampler.read(), BatterySampler.read())
+        let visible = windowVisible
+        let previous = rows
+        let (snaps, newSockets, gpuReading, batteryReading, blockers) = await Task.detached(priority: .utility) { () -> ([ProcessSnapshot], [ListeningSocket]?, GPUReading?, BatteryReading?, [SleepBlocker]) in
+            let snaps = ProcessSampler().sample()
+            let blockers = visible ? Self.arrange(SleepBlockers.build(SleepBlockers.read(now: Date()), rows: previous, all: snaps, now: Date()), rows: previous) : []
+            return (snaps, scanPorts ? PortScanner.scanSockets() : nil, GPUSampler.read(), BatterySampler.read(), blockers)
         }.value
         if let newSockets {
             sockets = newSockets
@@ -333,9 +339,16 @@ final class MonitorStore {
         let onBattery = batteryReading?.onBattery ?? false
         if let b = batteryReading {
             forecast.add(percent: b.percent, onBattery: b.onBattery, at: at)
-            if let m = forecast.minutesLeft(now: at) { minutesLeft = m } else if !onBattery { minutesLeft = nil }
+            if let m = forecast.minutesLeft(now: at) {
+                minutesLeft = m
+                forecastAt = at
+            } else if !onBattery || forecastAt.map({ at.timeIntervalSince($0) > 900 }) ?? true {
+                minutesLeft = nil
+            }
+            if let mw = b.systemMilliwatts { powerAverage.add(mw, at: at) }
+            averageSystemMilliwatts = powerAverage.milliwatts(now: at)
         }
-        sleepBlockers = Self.arrange(SleepBlockers.build(SleepBlockers.read(now: at), rows: rows, all: snaps, now: at), rows: rows)
+        sleepBlockers = blockers
         var nextStopped: [String: Date] = [:]
         var stoppedByPid: [Int32: Date] = [:]
         for snap in live where snap.state == .stopped {
@@ -381,7 +394,7 @@ final class MonitorStore {
         onCycle?(self)
     }
 
-    private static func arrange(_ blockers: [SleepBlocker], rows: [ProcessRow]) -> [SleepBlocker] {
+    nonisolated private static func arrange(_ blockers: [SleepBlocker], rows: [ProcessRow]) -> [SleepBlocker] {
         let sorted = blockers.sorted { ($0.since ?? .distantFuture, $0.id) < ($1.since ?? .distantFuture, $1.id) }
         let counts = Dictionary(sorted.map { ($0.title, 1) }, uniquingKeysWith: +)
         return sorted.map { b in

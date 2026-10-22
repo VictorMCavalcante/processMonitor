@@ -16,15 +16,35 @@ struct MetricCards: View {
     }
 
     private func card(_ title: String, _ value: String, key: String, color: Color, valueColor: Color = Theme.text, note: String? = nil) -> some View {
+        StatCard(title: title, value: value, valueColor: valueColor, note: note) {
+            Sparkline(values: store.history[key]?.elements ?? [], color: color).padding(.top, 4)
+        }
+    }
+}
+
+struct StatCard<Footer: View>: View {
+    let title: String
+    let value: String
+    var valueColor = Theme.text
+    let note: String?
+    @ViewBuilder var footer: Footer
+
+    var body: some View {
         VStack(alignment: .leading, spacing: 2) {
             Text(title).font(.system(size: 11)).foregroundStyle(Theme.muted)
-            Text(value).font(.system(size: 18, weight: .semibold)).foregroundStyle(valueColor)
-            if let note { Text(note).font(.system(size: 10)).foregroundStyle(Theme.muted).lineLimit(1) }
-            Sparkline(values: store.history[key]?.elements ?? [], color: color).padding(.top, 4)
+            Text(value).font(.system(size: 18, weight: .semibold)).foregroundStyle(valueColor).lineLimit(1).minimumScaleFactor(0.6)
+            Text(note ?? " ").font(.system(size: 10)).foregroundStyle(Theme.muted).lineLimit(1)
+            footer
         }
         .padding(.horizontal, 12).padding(.vertical, 10)
         .frame(maxWidth: .infinity, alignment: .leading)
         .background(RoundedRectangle(cornerRadius: 10).fill(Theme.panel))
         .overlay(RoundedRectangle(cornerRadius: 10).stroke(Theme.line))
+    }
+}
+
+extension StatCard where Footer == EmptyView {
+    init(title: String, value: String, note: String?) {
+        self.init(title: title, value: value, note: note) { EmptyView() }
     }
 }

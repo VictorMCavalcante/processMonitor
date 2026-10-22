@@ -33,11 +33,15 @@ public enum BatterySampler {
         let service = IOServiceGetMatchingService(kIOMainPortDefault, IOServiceMatching("AppleSmartBattery"))
         guard service != 0 else { return nil }
         defer { IOObjectRelease(service) }
-        var props: Unmanaged<CFMutableDictionary>?
-        guard IORegistryEntryCreateCFProperties(service, &props, kCFAllocatorDefault, 0) == KERN_SUCCESS,
-              let dict = props?.takeRetainedValue() as? [String: Any] else { return nil }
+        var dict: [String: Any] = [:]
+        for key in keys {
+            if let value = IORegistryEntryCreateCFProperty(service, key as CFString, kCFAllocatorDefault, 0)?.takeRetainedValue() { dict[key] = value }
+        }
         return parse(dict)
     }
+
+    private static let keys = ["MaxCapacity", "CurrentCapacity", "AppleRawCurrentCapacity", "AppleRawMaxCapacity", "DesignCapacity",
+                               "ExternalConnected", "IsCharging", "FullyCharged", "PowerTelemetryData", "CycleCount", "Temperature"]
 
     static func parse(_ p: [String: Any]) -> BatteryReading? {
         guard let capacity = number(p["MaxCapacity"]) else { return nil }
@@ -75,6 +79,22 @@ public enum BatteryHealth {
     public static func parseSystemProfiler(_ text: String) -> Int? {
         guard let match = text.firstMatch(of: /Maximum Capacity: (\d+)%/) else { return nil }
         return Int(match.1)
+    }
+}
+
+public struct PowerAverage: Sendable {
+    private var samples: [(at: Date, milliwatts: Double)] = []
+
+    public init() {}
+
+    public mutating func add(_ milliwatts: Double, at: Date) {
+        samples.append((at, milliwatts))
+        samples.removeAll { $0.at < at.addingTimeInterval(-600) }
+    }
+
+    public func milliwatts(now: Date) -> Double? {
+        let window = samples.filter { $0.at >= now.addingTimeInterval(-600) }
+        return window.isEmpty ? nil : window.reduce(0) { $0 + $1.milliwatts } / Double(window.count)
     }
 }
 

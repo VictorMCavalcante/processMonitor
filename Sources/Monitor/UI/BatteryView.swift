@@ -29,10 +29,11 @@ struct BatteryView: View {
 
     var body: some View {
         let groups = store.energyGroups
+        let shown = groups.filter { $0.milliwatts > 0 }
         ScrollView {
             VStack(alignment: .leading, spacing: 14) {
                 cards
-                consumers(groups)
+                consumers(shown)
                 blockers
                 suggestions(groups)
                 if store.battery != nil {
@@ -50,30 +51,22 @@ struct BatteryView: View {
             if let b {
                 card("Carga", "\(b.percent)%", note: BatteryText.state(b))
             }
-            card("Potência", b?.systemMilliwatts.map(BatteryText.watts) ?? "–", note: "Mac inteiro")
+            card("Potência", store.averageSystemMilliwatts.map(BatteryText.watts) ?? "–", note: "Mac inteiro · média de 10 min")
             card("Previsão", b?.onBattery == true ? BatteryText.forecast(store.minutesLeft) : "–", note: b?.onBattery == true ? "no ritmo dos últimos 10 min" : "na tomada")
             if let b {
-                card("Saúde", health(b), note: nil)
-                    .help(b.capacityMah.flatMap { cap in b.designMah.map { "Segura \(cap) de \($0) mAh (\(b.healthPercent ?? 0)%)" } } ?? "")
+                card("Saúde", (store.appleHealth ?? b.healthPercent).map { "\($0)%" } ?? "–", note: health(b))
+                    .help(b.capacityMah.flatMap { cap in b.designMah.map { "Segura \(cap) de \($0) mAh (\(b.healthPercent ?? 0)%, estimado)" } } ?? "")
             }
         }
     }
 
     private func health(_ b: BatteryReading) -> String {
-        let value = store.appleHealth.map { "\($0)% (Apple)" } ?? b.healthPercent.map { "\($0)% estimado" } ?? "–"
-        return [value, b.cycles.map { "\($0) ciclos" }, b.temperatureC.map { "\(Int($0.rounded())) °C" }].compactMap { $0 }.joined(separator: " · ")
+        let source = store.appleHealth != nil ? "Apple" : b.healthPercent != nil ? "estimado" : nil
+        return [source, b.cycles.map { "\($0) ciclos" }, b.temperatureC.map { "\(Int($0.rounded())) °C" }].compactMap { $0 }.joined(separator: " · ")
     }
 
     private func card(_ title: String, _ value: String, note: String?) -> some View {
-        VStack(alignment: .leading, spacing: 2) {
-            Text(title).font(.system(size: 11)).foregroundStyle(Theme.muted)
-            Text(value).font(.system(size: 18, weight: .semibold)).lineLimit(1).minimumScaleFactor(0.6)
-            if let note { Text(note).font(.system(size: 10)).foregroundStyle(Theme.muted).lineLimit(1) }
-        }
-        .padding(.horizontal, 12).padding(.vertical, 10)
-        .frame(maxWidth: .infinity, alignment: .leading)
-        .background(RoundedRectangle(cornerRadius: 10).fill(Theme.panel))
-        .overlay(RoundedRectangle(cornerRadius: 10).stroke(Theme.line))
+        StatCard(title: title, value: value, note: note)
     }
 
     private func section<Content: View>(_ title: String, @ViewBuilder _ content: () -> Content) -> some View {
@@ -115,7 +108,7 @@ struct BatteryView: View {
                 }
             }
             if groups.isEmpty { empty("Medindo… a energia aparece a partir do segundo ciclo.") }
-            if let system = store.battery?.systemMilliwatts {
+            if let system = store.averageSystemMilliwatts {
                 line {
                     Image(systemName: "display").foregroundStyle(Theme.muted).frame(width: 22)
                     Text("Sistema e tela").fontWeight(.semibold)
@@ -201,7 +194,7 @@ struct BatteryView: View {
                             Text(PeakText.when(s.start, now: store.now)).fontWeight(.semibold)
                             Text(Format.age(since: s.start, now: s.end ?? store.now)).foregroundStyle(Theme.muted)
                             Text("\(s.startPercent)%→\(s.endPercent)%")
-                            Text(s.drainPerHour.map { "\(BatteryText.decimal($0))%/h acordado" } ?? "—").foregroundStyle(Theme.muted)
+                            Text(s.drainPerHour.map { "\(BatteryText.decimal($0))%/h" + (s.reconstructed ? "" : " acordado") } ?? "—").foregroundStyle(Theme.muted)
                             if s.end == nil { Tag(text: "em andamento", color: Theme.ok) }
                             if s.reconstructed { Tag(text: "do registro do sistema", color: Theme.accent) }
                         }
