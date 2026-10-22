@@ -50,3 +50,24 @@ import Testing
     r.merge(many)
     #expect(r.sessions.count == 60 && r.sessions.last?.end == nil)
 }
+
+@Test func relaunchOnACAfterGapClosesWithLastBatteryValues() {
+    let bat = BatteryReading(percent: 80, onBattery: true, charging: false, fullyCharged: false, systemMilliwatts: nil, healthPercent: nil, cycles: nil, temperatureC: nil)
+    var r = SessionRecorder(sessions: [])
+    _ = r.update(battery: bat, groups: [], at: Date(timeIntervalSince1970: 0), interval: 0)
+    _ = r.update(battery: bat, groups: [], at: Date(timeIntervalSince1970: 3600), interval: 3600)
+    var relaunched = SessionRecorder(sessions: r.sessions)
+    var ac = bat; ac.onBattery = false; ac.percent = 100
+    _ = relaunched.update(battery: ac, groups: [], at: Date(timeIntervalSince1970: 9000), interval: 1)
+    #expect(relaunched.sessions[0].end == Date(timeIntervalSince1970: 3600) && relaunched.sessions[0].endPercent == 80)
+}
+
+@Test func insightComparesRatesAndIgnoresNegativeDrain() {
+    func s(_ drain: Int, hours: Double = 1, start: Int = 100, _ top: [EnergyItem]) -> BatterySession {
+        BatterySession(id: UUID(), start: .distantPast, end: .distantPast, startPercent: start, endPercent: start - drain, awakeSeconds: hours * 3600, top: top, reconstructed: false)
+    }
+    let history = [s(10, [EnergyItem(title: "Arc", milliwattHours: 2000)]), s(10, [EnergyItem(title: "Arc", milliwattHours: 2000)]), s(-40, start: 50, [])]
+    let long = s(50, hours: 2, [EnergyItem(title: "supabase", milliwattHours: 9000), EnergyItem(title: "Arc", milliwattHours: 4000)])
+    #expect(SessionInsight.compare(long, history: history) == "Esta sessão gastou 2,5× mais que a sua média; principais diferenças: supabase")
+    #expect(SessionInsight.compare(s(-5, start: 50, []), history: history) == nil)
+}

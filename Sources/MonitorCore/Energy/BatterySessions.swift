@@ -19,8 +19,9 @@ public struct BatterySession: Codable, Sendable, Equatable, Identifiable {
     public var awakeSeconds: Double
     public var top: [EnergyItem]
     public var reconstructed: Bool
+    public var lastSeen: Date?
 
-    public init(id: UUID, start: Date, end: Date?, startPercent: Int, endPercent: Int, awakeSeconds: Double, top: [EnergyItem], reconstructed: Bool) {
+    public init(id: UUID, start: Date, end: Date?, startPercent: Int, endPercent: Int, awakeSeconds: Double, top: [EnergyItem], reconstructed: Bool, lastSeen: Date? = nil) {
         self.id = id
         self.start = start
         self.end = end
@@ -29,6 +30,7 @@ public struct BatterySession: Codable, Sendable, Equatable, Identifiable {
         self.awakeSeconds = awakeSeconds
         self.top = top
         self.reconstructed = reconstructed
+        self.lastSeen = lastSeen
     }
 
     public var drainPerHour: Double? {
@@ -39,6 +41,7 @@ public struct BatterySession: Codable, Sendable, Equatable, Identifiable {
 public struct SessionRecorder: Sendable {
     public static let limit = 60
     public static let saveEvery: TimeInterval = 300
+    public static let staleAfter: TimeInterval = 600
     public private(set) var sessions: [BatterySession]
     private var totals: [String: Double]
     private var lastSave: Date?
@@ -53,14 +56,19 @@ public struct SessionRecorder: Sendable {
         let openIndex = sessions.lastIndex { $0.end == nil }
         guard battery.onBattery else {
             guard let i = openIndex else { return false }
-            sessions[i].end = now
-            sessions[i].endPercent = battery.percent
+            let last = sessions[i].lastSeen ?? sessions[i].start
+            if now.timeIntervalSince(last) > Self.staleAfter {
+                sessions[i].end = last
+            } else {
+                sessions[i].end = now
+                sessions[i].endPercent = battery.percent
+            }
             totals = [:]
             lastSave = nil
             return true
         }
         guard let i = openIndex else {
-            sessions.append(BatterySession(id: UUID(), start: now, end: nil, startPercent: battery.percent, endPercent: battery.percent, awakeSeconds: 0, top: [], reconstructed: false))
+            sessions.append(BatterySession(id: UUID(), start: now, end: nil, startPercent: battery.percent, endPercent: battery.percent, awakeSeconds: 0, top: [], reconstructed: false, lastSeen: now))
             totals = [:]
             lastSave = now
             trim()
@@ -68,6 +76,7 @@ public struct SessionRecorder: Sendable {
         }
         sessions[i].awakeSeconds += interval
         sessions[i].endPercent = battery.percent
+        sessions[i].lastSeen = now
         for g in groups { totals[g.title, default: 0] += g.milliwatts * interval / 3600 }
         sessions[i].top = totals.sorted { $0.value > $1.value }.prefix(5).map { EnergyItem(title: $0.key, milliwattHours: $0.value) }
         guard now.timeIntervalSince(lastSave ?? sessions[i].start) >= Self.saveEvery else { return false }
@@ -120,15 +129,18 @@ public struct BatterySessionStore: Sendable {
 
 public enum SessionInsight {
     public static func compare(_ s: BatterySession, history: [BatterySession]) -> String? {
-        let others = history.filter { !$0.reconstructed && $0.id != s.id && $0.drainPerHour != nil }
-        guard let drain = s.drainPerHour, !others.isEmpty else { return nil }
+        let others = history.filter { !$0.reconstructed && $0.id != s.id && ($0.drainPerHour ?? -1) >= 0 }
+        guard let drain = s.drainPerHour, drain >= 0, !others.isEmpty else { return nil }
         let count = Double(others.count)
         let average = others.compactMap(\.drainPerHour).reduce(0, +) / count
         guard average > 0, drain >= 1.5 * average else { return nil }
         let factor = String(format: "%.1f", drain / average).replacingOccurrences(of: ".", with: ",")
         var usual: [String: Double] = [:]
-        for item in others.flatMap(\.top) { usual[item.title, default: 0] += item.milliwattHours / count }
-        let titles = s.top.map { ($0.title, $0.milliwattHours - usual[$0.title, default: 0]) }
+        for other in others {
+            for item in other.top { usual[item.title, default: 0] += item.milliwattHours / (other.awakeSeconds / 3600) / count }
+        }
+        let hours = s.awakeSeconds / 3600
+        let titles = s.top.map { ($0.title, $0.milliwattHours / hours - usual[$0.title, default: 0]) }
             .filter { $0.1 > 0 }.sorted { $0.1 > $1.1 }.prefix(2).map(\.0)
         let text = "Esta sessão gastou \(factor)× mais que a sua média"
         return titles.isEmpty ? text : "\(text); principais diferenças: \(titles.joined(separator: ", "))"

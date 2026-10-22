@@ -74,7 +74,8 @@ public enum PowerLog {
             run = nil
         }
         for line in text.split(separator: "\n") {
-            guard line.count > 26, let date = formatter.date(from: String(line.prefix(25))) else { continue }
+            guard line.utf8.count > 26, line.contains("Using ") || line.contains("due to "),
+                  let date = formatter.date(from: String(line.prefix(25))) else { continue }
             let rest = line.dropFirst(26)
             guard let tab = rest.firstIndex(of: "\t") else { continue }
             let event = rest[..<tab].trimmingCharacters(in: .whitespaces)
