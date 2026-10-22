@@ -20,9 +20,12 @@ public struct ProcessSnapshot: Sendable, Identifiable, Equatable {
     public var footprintBytes: UInt64
     public var cpuTimeNs: UInt64
     public var ttyName: String?
+    public var energyNj: UInt64
+    public var wakeups: UInt64
 
     public init(id: Int32, ppid: Int32, uid: UInt32, name: String, executablePath: String?, arguments: [String], cwd: String?,
-                startTime: Date, state: ProcessState, footprintBytes: UInt64, cpuTimeNs: UInt64, ttyName: String?) {
+                startTime: Date, state: ProcessState, footprintBytes: UInt64, cpuTimeNs: UInt64, ttyName: String?,
+                energyNj: UInt64 = 0, wakeups: UInt64 = 0) {
         self.id = id
         self.ppid = ppid
         self.uid = uid
@@ -35,5 +38,7 @@ public struct ProcessSnapshot: Sendable, Identifiable, Equatable {
         self.footprintBytes = footprintBytes
         self.cpuTimeNs = cpuTimeNs
         self.ttyName = ttyName
+        self.energyNj = energyNj
+        self.wakeups = wakeups
     }
 }

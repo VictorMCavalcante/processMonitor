@@ -7,13 +7,17 @@ public struct ProcessRow: Sendable, Identifiable, Equatable {
     public var cpuPercent: Double
     public var ports: [UInt16]
     public var gpuPercent: Double
+    public var milliwatts: Double
+    public var wakeupsPerSecond: Double
 
-    public init(snapshot: ProcessSnapshot, identified: Identified, cpuPercent: Double, ports: [UInt16], gpuPercent: Double = 0) {
+    public init(snapshot: ProcessSnapshot, identified: Identified, cpuPercent: Double, ports: [UInt16], gpuPercent: Double = 0, milliwatts: Double = 0, wakeupsPerSecond: Double = 0) {
         self.snapshot = snapshot
         self.identified = identified
         self.cpuPercent = cpuPercent
         self.ports = ports
         self.gpuPercent = gpuPercent
+        self.milliwatts = milliwatts
+        self.wakeupsPerSecond = wakeupsPerSecond
     }
 }
 
@@ -21,6 +25,7 @@ public enum GroupSort: Sendable, Hashable {
     case memory
     case cpu
     case gpu
+    case energy
 }
 
 extension GroupSort {
@@ -29,6 +34,7 @@ extension GroupSort {
         case .memory: Double(r.snapshot.footprintBytes)
         case .cpu: r.cpuPercent
         case .gpu: r.gpuPercent
+        case .energy: r.milliwatts
         }
     }
 
@@ -37,6 +43,7 @@ extension GroupSort {
         case .memory: Double(g.footprintBytes)
         case .cpu: g.cpuPercent
         case .gpu: g.gpuPercent
+        case .energy: g.milliwatts
         }
     }
 }
@@ -56,6 +63,8 @@ public struct ProcessGroup: Sendable, Identifiable, Equatable {
     public var footprintBytes: UInt64
     public var cpuPercent: Double
     public var gpuPercent: Double
+    public var milliwatts: Double
+    public var wakeupsPerSecond: Double
     public var oldestStart: Date
 
     public init(id: String, title: String, subtitle: String?, kind: ProcessKind, rows: [ProcessRow], sort: GroupSort = .memory) {
@@ -67,6 +76,8 @@ public struct ProcessGroup: Sendable, Identifiable, Equatable {
         footprintBytes = rows.reduce(0) { $0 + $1.snapshot.footprintBytes }
         cpuPercent = rows.reduce(0) { $0 + $1.cpuPercent }
         gpuPercent = rows.reduce(0) { $0 + $1.gpuPercent }
+        milliwatts = rows.reduce(0) { $0 + $1.milliwatts }
+        wakeupsPerSecond = rows.reduce(0) { $0 + $1.wakeupsPerSecond }
         oldestStart = rows.map(\.snapshot.startTime).min() ?? Date()
     }
 }
