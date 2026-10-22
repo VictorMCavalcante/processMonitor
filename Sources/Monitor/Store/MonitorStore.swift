@@ -21,7 +21,7 @@ final class MonitorStore {
     var search = ""
     var windowVisible = false {
         didSet {
-            if windowVisible && !oldValue { Task { await refresh() } }
+            if windowVisible && !oldValue && refreshing == 0 { Task { await refresh() } }
         }
     }
     var lastMessage: String?
@@ -77,6 +77,8 @@ final class MonitorStore {
     @ObservationIgnored private var lastPowerLog = Date.distantPast
     @ObservationIgnored private var healthLoading = false
     @ObservationIgnored private var quietSince: [Int32: Date] = [:]
+    @ObservationIgnored private var refreshTask: Task<Void, Never>?
+    @ObservationIgnored private var refreshing = 0
 
     var groups: [ProcessGroup] {
         let query = search.trimmingCharacters(in: .whitespaces).lowercased()
@@ -302,7 +304,17 @@ final class MonitorStore {
         }
     }
 
+    /// Serialized so overlapping callers never sample within milliseconds of each other (skews CPU/energy rates).
     func refresh() async {
+        refreshing += 1
+        defer { refreshing -= 1 }
+        let previous = refreshTask
+        let task = Task { await previous?.value; await sample() }
+        refreshTask = task
+        await task.value
+    }
+
+    private func sample() async {
         let scanPorts = Date().timeIntervalSince(lastPortScan) >= 15
         let visible = windowVisible
         let previous = rows

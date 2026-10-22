@@ -131,8 +131,7 @@ public struct BatterySessionStore: Sendable {
         decoder.dateDecodingStrategy = .secondsSince1970
         let items = try? decoder.decode([Lossy].self, from: data)
         let sessions = items?.compactMap(\.value) ?? []
-        if items?.count != sessions.count {
-            try? FileManager.default.removeItem(at: backupURL)
+        if items?.count != sessions.count, !FileManager.default.fileExists(atPath: backupURL.path) {
             try? FileManager.default.copyItem(at: url, to: backupURL)
         }
         return sessions

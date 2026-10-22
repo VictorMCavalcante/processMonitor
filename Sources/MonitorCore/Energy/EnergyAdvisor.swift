@@ -60,8 +60,11 @@ public enum EnergyAdvisor {
         }
         var seen: Set<String> = []
         result = result.filter { s in
-            guard case .close(let id) = s.action else { return true }
-            return seen.insert(id).inserted
+            switch s.action {
+            case .close(let id): return seen.insert(id).inserted
+            case .closeOwner(let pid): return seen.insert(groups.first { g in g.rows.contains { $0.id == pid } }?.id ?? "pid:\(pid)").inserted
+            default: return true
+            }
         }
         return Array(result.prefix(4))
     }

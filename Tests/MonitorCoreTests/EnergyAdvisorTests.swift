@@ -36,7 +36,8 @@ import Testing
     let now = Date(timeIntervalSince1970: 10 * 3600)
     var g = ProcessGroup.fixture(kind: .devServer, pids: [9]); g.milliwatts = 2000
     let runaway = Runaway(row: g.rows[0], reason: .energy(milliwatts: 2000, minutes: 10))
-    let s = EnergyAdvisor.suggestions(groups: [g], runaways: [runaway], blockers: [], log: .empty, onBattery: true, quietSince: [:], now: now)
+    let blocker = SleepBlocker(id: "9:x", pid: 9, kind: "k", title: "t", since: now.addingTimeInterval(-3600), ownerPid: 9)
+    let s = EnergyAdvisor.suggestions(groups: [g], runaways: [runaway], blockers: [blocker], log: .empty, onBattery: true, quietSince: [9: .distantPast], now: now)
     #expect(s.map(\.id) == ["runaway:g"])
 }
 
