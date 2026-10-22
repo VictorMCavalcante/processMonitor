@@ -22,9 +22,7 @@ struct MonitorApp: App {
         .menuBarExtraStyle(.window)
 
         Window("Vernio", id: "main") {
-            MainWindow(store: store)
-                .onAppear { store.windowVisible = true }
-                .onDisappear { store.windowVisible = false }
+            WindowRoot(store: store)
         }
         .defaultSize(width: 1240, height: 820)
         .windowToolbarStyle(.unified)
@@ -56,5 +54,20 @@ final class PolicyBox {
 
     func save() {
         UserDefaults.standard.set(try? JSONEncoder().encode(policy.seen), forKey: Self.key)
+    }
+}
+
+private struct WindowRoot: View {
+    let store: MonitorStore
+
+    var body: some View {
+        Group {
+            if store.windowVisible { MainWindow(store: store) } else { Theme.bg }
+        }
+        .onAppear { store.windowVisible = true }
+        .onReceive(NotificationCenter.default.publisher(for: NSWindow.willCloseNotification)) { note in
+            guard let window = note.object as? NSWindow, window.identifier?.rawValue.hasPrefix("main") == true else { return }
+            store.windowVisible = false
+        }
     }
 }
