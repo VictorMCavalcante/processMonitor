@@ -30,9 +30,9 @@ public struct ProcessSampler: Sendable {
     private func read(_ pid: Int32) -> ProcessSnapshot? {
         guard let base = Self.basics(pid) else { return nil }
         let args = Self.arguments(pid)
-        var usage = rusage_info_v4()
+        var usage = rusage_info_v6()
         let rusageOK = withUnsafeMutablePointer(to: &usage) {
-            $0.withMemoryRebound(to: rusage_info_t?.self, capacity: 1) { proc_pid_rusage(pid, RUSAGE_INFO_V4, $0) == 0 }
+            $0.withMemoryRebound(to: rusage_info_t?.self, capacity: 1) { proc_pid_rusage(pid, RUSAGE_INFO_V6, $0) == 0 }
         }
         let cpuAbs = rusageOK ? usage.ri_user_time + usage.ri_system_time : 0
         return ProcessSnapshot(
@@ -47,7 +47,9 @@ public struct ProcessSampler: Sendable {
             state: base.state,
             footprintBytes: rusageOK ? usage.ri_phys_footprint : 0,
             cpuTimeNs: cpuAbs * timebase.numer / timebase.denom,
-            ttyName: Self.ttyName(base.tdev)
+            ttyName: Self.ttyName(base.tdev),
+            energyNj: rusageOK ? usage.ri_energy_nj : 0,
+            wakeups: rusageOK ? usage.ri_interrupt_wkups + usage.ri_pkg_idle_wkups : 0
         )
     }
 

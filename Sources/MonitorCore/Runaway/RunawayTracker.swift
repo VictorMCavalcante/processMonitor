@@ -3,6 +3,7 @@ import Foundation
 public enum RunawayReason: Sendable, Equatable {
     case cpu(minutes: Int)
     case gpu(minutes: Int)
+    case energy(milliwatts: Int, minutes: Int)
     case memory(from: UInt64, to: UInt64, minutes: Int)
 }
 
@@ -20,6 +21,7 @@ public struct Runaway: Sendable, Identifiable, Equatable {
         switch reason {
         case .cpu(let minutes): "CPU acima de 80% há \(minutes) min."
         case .gpu(let minutes): "GPU acima de 80% há \(minutes) min."
+        case .energy(let milliwatts, let minutes): "Gastando ~\(String(format: "%.1f", Double(milliwatts) / 1000).replacingOccurrences(of: ".", with: ",")) W há \(minutes) min na bateria."
         case .memory(let from, let to, let minutes): "Memória cresceu de \(Format.bytes(from)) para \(Format.bytes(to)) em \(minutes) min."
         }
     }
@@ -30,6 +32,8 @@ public struct RunawayTracker: Sendable {
     public static let cpuDuration: TimeInterval = 300
     public static let gpuThreshold = 80.0
     public static let gpuDuration: TimeInterval = 300
+    public static let energyMilliwatts = 2000.0
+    public static let energyDuration: TimeInterval = 600
     public static let memoryDuration: TimeInterval = 1800
     public static let memoryRatio = 1.5
     public static let memoryMinimumGrowth: UInt64 = 500 * 1_048_576
@@ -39,6 +43,7 @@ public struct RunawayTracker: Sendable {
     private struct State: Sendable {
         var cpuSince: Date?
         var gpuSince: Date?
+        var energySince: Date?
         var memoryStart: (at: Date, bytes: UInt64)
         var memoryLast: UInt64
     }
@@ -47,7 +52,7 @@ public struct RunawayTracker: Sendable {
 
     public init() {}
 
-    public mutating func update(_ rows: [ProcessRow], at now: Date, myUid: UInt32, ignore: IgnoreList) -> [Runaway] {
+    public mutating func update(_ rows: [ProcessRow], at now: Date, myUid: UInt32, ignore: IgnoreList, onBattery: Bool = false) -> [Runaway] {
         var next: [String: State] = [:]
         var found: [Runaway] = []
         for row in rows {
@@ -55,7 +60,7 @@ public struct RunawayTracker: Sendable {
                   row.snapshot.executablePath?.contains("com.apple.Virtualization.VirtualMachine") != true else { continue }
             let key = "\(row.id):\(row.snapshot.startTime.timeIntervalSince1970)"
             let bytes = row.snapshot.footprintBytes
-            var state = states[key] ?? State(cpuSince: nil, gpuSince: nil, memoryStart: (now, bytes), memoryLast: bytes)
+            var state = states[key] ?? State(cpuSince: nil, gpuSince: nil, energySince: nil, memoryStart: (now, bytes), memoryLast: bytes)
             if row.cpuPercent >= Self.cpuThreshold {
                 if state.cpuSince == nil { state.cpuSince = now }
             } else {
@@ -65,6 +70,11 @@ public struct RunawayTracker: Sendable {
                 if state.gpuSince == nil { state.gpuSince = now }
             } else {
                 state.gpuSince = nil
+            }
+            if onBattery, row.milliwatts > Self.energyMilliwatts {
+                if state.energySince == nil { state.energySince = now }
+            } else {
+                state.energySince = nil
             }
             if Double(bytes) < Double(state.memoryLast) * (1 - Self.memoryDropTolerance) {
                 state.memoryStart = (now, bytes)
@@ -77,6 +87,10 @@ public struct RunawayTracker: Sendable {
             }
             if let since = state.gpuSince, now.timeIntervalSince(since) >= Self.gpuDuration {
                 found.append(Runaway(row: row, reason: .gpu(minutes: Int(now.timeIntervalSince(since) / 60))))
+                continue
+            }
+            if let since = state.energySince, now.timeIntervalSince(since) >= Self.energyDuration {
+                found.append(Runaway(row: row, reason: .energy(milliwatts: Int(row.milliwatts), minutes: Int(now.timeIntervalSince(since) / 60))))
                 continue
             }
             let elapsed = now.timeIntervalSince(state.memoryStart.at)
