@@ -62,7 +62,7 @@ extension View {
     @ViewBuilder
     func glassWindowBackground() -> some View {
         if #available(macOS 26.0, *) {
-            background(Theme.bg.opacity(0.78)).containerBackground(.ultraThinMaterial, for: .window)
+            background(Theme.brand.opacity(0.16)).containerBackground(.ultraThinMaterial, for: .window)
         } else {
             background(Theme.bg)
         }
