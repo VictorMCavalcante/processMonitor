@@ -17,8 +17,7 @@ struct DockerView: View {
                 Text("Nenhum container em execução.").foregroundStyle(Theme.muted).font(.system(size: 12)).padding(20)
             }
         }
-        .background(RoundedRectangle(cornerRadius: 10).fill(Theme.panel))
-        .overlay(RoundedRectangle(cornerRadius: 10).stroke(Theme.line))
+        .glassPanel()
         .clipShape(RoundedRectangle(cornerRadius: 10))
     }
 

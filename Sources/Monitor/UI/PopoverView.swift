@@ -13,7 +13,7 @@ struct PopoverView: View {
             consumers.padding(.horizontal, 14).padding(.bottom, 12)
         }
         .frame(width: 310)
-        .background(Theme.panel.opacity(0.92))
+        .background(Theme.panel.opacity(Theme.glass ? 0.35 : 0.92))
         .foregroundStyle(Theme.text)
         .preferredColorScheme(.dark)
         .tint(Theme.brand)

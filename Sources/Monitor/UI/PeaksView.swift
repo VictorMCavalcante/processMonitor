@@ -41,7 +41,6 @@ struct PeaksView: View {
         }
         .font(.system(size: 12.5))
         .padding(12)
-        .background(RoundedRectangle(cornerRadius: 10).fill(Theme.panel))
-        .overlay(RoundedRectangle(cornerRadius: 10).stroke(Theme.line))
+        .glassPanel()
     }
 }

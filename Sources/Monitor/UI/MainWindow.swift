@@ -58,12 +58,12 @@ struct MainWindow: View {
                 }
             }
         }
-        .background(Theme.bg)
+        .glassWindowBackground()
         .foregroundStyle(Theme.text)
         .toolbar { windowToolbar }
         .modifier(HiddenWindowTitle())
-        .toolbarBackground(Theme.barTop, for: .windowToolbar)
-        .toolbarBackground(.visible, for: .windowToolbar)
+        .toolbarBackground(Theme.glass ? .clear : Theme.barTop, for: .windowToolbar)
+        .toolbarBackground(Theme.glass ? .hidden : .visible, for: .windowToolbar)
         .preferredColorScheme(.dark)
         .tint(Theme.brand)
         .frame(minWidth: 1100, idealWidth: 1240, minHeight: 720, idealHeight: 820)
@@ -115,8 +115,7 @@ struct MainWindow: View {
             .font(.system(size: 12))
             .padding(.horizontal, 10).padding(.vertical, 5)
             .frame(width: 300)
-            .background(RoundedRectangle(cornerRadius: 8).fill(Theme.field))
-            .overlay(RoundedRectangle(cornerRadius: 8).stroke(Theme.line))
+            .glassPanel(cornerRadius: 8)
             .background(Button("") { searchFocused = true }.keyboardShortcut("f", modifiers: .command).opacity(0))
             Button { showPreferences.toggle() } label: { Image(systemName: "gearshape") }
                 .buttonStyle(.plain)

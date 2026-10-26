@@ -78,8 +78,7 @@ struct BatteryView: View {
                 .background(Theme.panel2)
             content()
         }
-        .background(RoundedRectangle(cornerRadius: 10).fill(Theme.panel))
-        .overlay(RoundedRectangle(cornerRadius: 10).stroke(Theme.line))
+        .glassPanel()
         .clipShape(RoundedRectangle(cornerRadius: 10))
     }
 

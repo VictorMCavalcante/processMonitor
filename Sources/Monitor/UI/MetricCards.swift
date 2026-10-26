@@ -38,8 +38,7 @@ struct StatCard<Footer: View>: View {
         }
         .padding(.horizontal, 12).padding(.vertical, 10)
         .frame(maxWidth: .infinity, alignment: .leading)
-        .background(RoundedRectangle(cornerRadius: 10).fill(Theme.panel))
-        .overlay(RoundedRectangle(cornerRadius: 10).stroke(Theme.line))
+        .glassPanel()
     }
 }
 

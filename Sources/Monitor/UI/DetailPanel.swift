@@ -21,7 +21,7 @@ struct DetailPanel: View {
         .padding(14)
         .frame(width: 280)
         .frame(maxHeight: .infinity)
-        .background(Theme.panel)
+        .background(Theme.glass ? .clear : Theme.panel)
         .overlay(alignment: .leading) { Theme.line.frame(width: 1) }
     }
 

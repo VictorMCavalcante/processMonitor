@@ -94,8 +94,7 @@ struct DiskView: View {
         }
         .padding(.horizontal, 12).padding(.vertical, 10)
         .frame(maxWidth: .infinity, maxHeight: .infinity, alignment: .topLeading)
-        .background(RoundedRectangle(cornerRadius: 10).fill(Theme.panel))
-        .overlay(RoundedRectangle(cornerRadius: 10).stroke(Theme.line))
+        .glassPanel()
         .contentShape(Rectangle())
         .onTapGesture { if let target { withAnimation { proxy.scrollTo(target, anchor: .top) } } }
     }
