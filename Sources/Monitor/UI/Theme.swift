@@ -7,10 +7,10 @@ enum Theme {
     static let panel = Color(hex: 0x1C1726)
     static let glassBase = Color(hex: 0x282C34) // One Dark gray
     static var panel2: Color { glass ? .white.opacity(0.05) : Color(hex: 0x241E31) }
-    static let line = Color(hex: 0x2E2640)
+    static var line: Color { glass ? Color(hex: 0x3E4451) : Color(hex: 0x2E2640) }
     static let text = Color(hex: 0xF3EFFA)
-    static let muted = Color(hex: 0x9A90AD)
-    static let muted2 = Color(hex: 0x6B6380)
+    static var muted: Color { glass ? Color(hex: 0x9DA5B4) : Color(hex: 0x9A90AD) }
+    static var muted2: Color { glass ? Color(hex: 0x5C6370) : Color(hex: 0x6B6380) }
     static let brand = Color(hex: 0x8B3DFF)
     static let accent = Color(hex: 0xB48CFF)
     static let mist = Color(hex: 0xD9C7FF)
@@ -53,7 +53,7 @@ extension View {
     func glassPanel(cornerRadius: CGFloat = 10) -> some View {
         if #available(macOS 26.0, *) {
             glassEffect(.regular.tint(Theme.glassBase.opacity(0.6)), in: .rect(cornerRadius: cornerRadius))
-                .overlay(RoundedRectangle(cornerRadius: cornerRadius).stroke(Theme.brand.opacity(0.35)))
+                .overlay(RoundedRectangle(cornerRadius: cornerRadius).stroke(Theme.brand.opacity(0.22)))
         } else {
             background(RoundedRectangle(cornerRadius: cornerRadius).fill(Theme.panel))
                 .overlay(RoundedRectangle(cornerRadius: cornerRadius).stroke(Theme.line))
