@@ -52,7 +52,8 @@ extension View {
     @ViewBuilder
     func glassPanel(cornerRadius: CGFloat = 10) -> some View {
         if #available(macOS 26.0, *) {
-            glassEffect(.regular.tint(Theme.brand.opacity(0.14)), in: .rect(cornerRadius: cornerRadius))
+            glassEffect(.regular.tint(Theme.glassBase.opacity(0.6)), in: .rect(cornerRadius: cornerRadius))
+                .overlay(RoundedRectangle(cornerRadius: cornerRadius).stroke(Theme.brand.opacity(0.35)))
         } else {
             background(RoundedRectangle(cornerRadius: cornerRadius).fill(Theme.panel))
                 .overlay(RoundedRectangle(cornerRadius: cornerRadius).stroke(Theme.line))
@@ -63,7 +64,7 @@ extension View {
     @ViewBuilder
     func glassWindowBackground() -> some View {
         if #available(macOS 26.0, *) {
-            background(Theme.brand.opacity(0.16)).background(Theme.glassBase.opacity(0.86)).containerBackground(.ultraThinMaterial, for: .window)
+            background(Theme.glassBase.opacity(0.86)).containerBackground(.ultraThinMaterial, for: .window)
         } else {
             background(Theme.bg)
         }
