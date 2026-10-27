@@ -5,6 +5,7 @@ enum Theme {
     static var glass: Bool { if #available(macOS 26.0, *) { true } else { false } }
     static let bg = Color(hex: 0x120E1A)
     static let panel = Color(hex: 0x1C1726)
+    static let glassBase = Color(hex: 0x282C34) // One Dark gray
     static var panel2: Color { glass ? .white.opacity(0.05) : Color(hex: 0x241E31) }
     static let line = Color(hex: 0x2E2640)
     static let text = Color(hex: 0xF3EFFA)
@@ -62,7 +63,7 @@ extension View {
     @ViewBuilder
     func glassWindowBackground() -> some View {
         if #available(macOS 26.0, *) {
-            background(Theme.brand.opacity(0.16)).background(Theme.bg.opacity(0.86)).containerBackground(.ultraThinMaterial, for: .window)
+            background(Theme.brand.opacity(0.16)).background(Theme.glassBase.opacity(0.86)).containerBackground(.ultraThinMaterial, for: .window)
         } else {
             background(Theme.bg)
         }
