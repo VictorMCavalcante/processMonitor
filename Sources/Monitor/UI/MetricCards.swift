@@ -7,17 +7,17 @@ struct MetricCards: View {
     var body: some View {
         let s = store.stats
         HStack(spacing: 10) {
-            card("Pressão de memória", s.map { "\($0.pressurePercent)%" } ?? "–", key: "pressure", color: Color(hex: 0x98C379), valueColor: Theme.color(for: s?.level ?? .normal))
-            card("Memória usada", s.map { Format.bytes($0.usedBytes) } ?? "–", key: "used", color: Theme.accent)
-            card("CPU", s.map { "\(Int($0.cpuPercent))%" } ?? "–", key: "cpu", color: Color(hex: 0x61AFEF))
-            card("GPU", s?.gpuPercent.map { "\(Int($0))%" } ?? "–", key: "gpu", color: Color(hex: 0xD19A66), note: s?.gpuMemoryBytes.map { "\(Format.bytes($0)) de memória de GPU" })
-            card("Swap", s.map { Format.bytes($0.swapUsedBytes) } ?? "–", key: "swap", color: Color(hex: 0xE06C75))
+            card("Pressão de memória", s.map { "\($0.pressurePercent)%" } ?? "–", key: "pressure", valueColor: Theme.color(for: s?.level ?? .normal))
+            card("Memória usada", s.map { Format.bytes($0.usedBytes) } ?? "–", key: "used")
+            card("CPU", s.map { "\(Int($0.cpuPercent))%" } ?? "–", key: "cpu")
+            card("GPU", s?.gpuPercent.map { "\(Int($0))%" } ?? "–", key: "gpu", note: s?.gpuMemoryBytes.map { "\(Format.bytes($0)) de memória de GPU" })
+            card("Swap", s.map { Format.bytes($0.swapUsedBytes) } ?? "–", key: "swap")
         }
     }
 
-    private func card(_ title: String, _ value: String, key: String, color: Color, valueColor: Color = Theme.text, note: String? = nil) -> some View {
+    private func card(_ title: String, _ value: String, key: String, valueColor: Color = Theme.text, note: String? = nil) -> some View {
         StatCard(title: title, value: value, valueColor: valueColor, note: note) {
-            Sparkline(values: store.history[key]?.elements ?? [], color: color).padding(.top, 4)
+            Sparkline(values: store.history[key]?.elements ?? [], color: Theme.chart[key] ?? Theme.accent).padding(.top, 4)
         }
     }
 }

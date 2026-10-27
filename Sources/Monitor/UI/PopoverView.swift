@@ -8,6 +8,7 @@ struct PopoverView: View {
     var body: some View {
         VStack(alignment: .leading, spacing: 0) {
             header
+            charts.padding(.horizontal, 14).padding(.bottom, 12)
             forgotten.padding(.horizontal, 12).padding(.bottom, 10)
             extras.padding(.horizontal, 14).padding(.bottom, 8)
             consumers.padding(.horizontal, 14).padding(.bottom, 12)
@@ -25,9 +26,7 @@ struct PopoverView: View {
             VStack(alignment: .leading, spacing: 3) {
                 Text(Theme.label(for: store.stats?.level ?? .normal)).font(.system(size: 13, weight: .semibold))
                 if let s = store.stats {
-                    Text("\(Format.bytes(s.usedBytes)) de \(Format.bytes(s.totalBytes)) · swap \(Format.bytes(s.swapUsedBytes))")
-                        .foregroundStyle(Theme.muted)
-                    Text("CPU \(Int(s.cpuPercent))%" + (s.gpuPercent.map { " · GPU \(Int($0))%" } ?? "")).foregroundStyle(Theme.muted)
+                    Text("\(Format.bytes(s.usedBytes)) de \(Format.bytes(s.totalBytes))").foregroundStyle(Theme.muted)
                 }
                 if let b = store.battery, b.onBattery {
                     Text("Bateria \(b.percent)%" + (store.averageSystemMilliwatts.map { " · " + BatteryText.watts($0) } ?? "") + " · " + BatteryText.forecast(store.minutesLeft))
@@ -42,6 +41,32 @@ struct PopoverView: View {
             .font(.system(size: 12))
         }
         .padding(14)
+    }
+
+    private var charts: some View {
+        let s = store.stats
+        return Grid(horizontalSpacing: 14, verticalSpacing: 10) {
+            GridRow {
+                mini("Memória", s.map { Format.bytes($0.usedBytes) }, key: "used")
+                mini("CPU", s.map { "\(Int($0.cpuPercent))%" }, key: "cpu")
+            }
+            GridRow {
+                mini("GPU", s?.gpuPercent.map { "\(Int($0))%" }, key: "gpu")
+                mini("Swap", s.map { Format.bytes($0.swapUsedBytes) }, key: "swap")
+            }
+        }
+    }
+
+    private func mini(_ title: String, _ value: String?, key: String) -> some View {
+        VStack(alignment: .leading, spacing: 3) {
+            HStack {
+                Text(title).foregroundStyle(Theme.muted)
+                Spacer()
+                Text(value ?? "–").font(.system(size: 11, weight: .semibold))
+            }
+            .font(.system(size: 11))
+            Sparkline(values: store.history[key]?.elements ?? [], color: Theme.chart[key] ?? Theme.accent)
+        }
     }
 
     private var forgotten: some View {

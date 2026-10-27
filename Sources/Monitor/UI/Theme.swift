@@ -21,6 +21,8 @@ enum Theme {
     static let ok = Color(hex: 0x3DDC84)
     static let warn = Color(hex: 0xFFB340)
     static let bad = Color(hex: 0xFF5C5C)
+    /// Sparkline color per history key (One Dark palette).
+    static let chart: [String: Color] = ["pressure": Color(hex: 0x98C379), "used": accent, "cpu": Color(hex: 0x61AFEF), "gpu": Color(hex: 0xD19A66), "swap": Color(hex: 0xE06C75)]
 
     static func color(for level: PressureLevel) -> Color {
         switch level {
