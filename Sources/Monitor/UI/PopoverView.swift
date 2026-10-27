@@ -6,14 +6,16 @@ struct PopoverView: View {
     @Environment(\.openWindow) private var openWindow
 
     var body: some View {
-        VStack(alignment: .leading, spacing: 0) {
+        VStack(alignment: .leading, spacing: 12) {
             header
-            charts.padding(.horizontal, 14).padding(.bottom, 12)
-            forgotten.padding(.horizontal, 12).padding(.bottom, 10)
-            extras.padding(.horizontal, 14).padding(.bottom, 8)
-            consumers.padding(.horizontal, 14).padding(.bottom, 12)
+            charts
+            chips
+            if !store.suspects.isEmpty { forgotten }
+            consumers
+            footer
         }
-        .frame(width: 310)
+        .padding(14)
+        .frame(width: 330)
         .background(Theme.glass ? Theme.glassBase.opacity(0.86) : Theme.panel.opacity(0.92))
         .foregroundStyle(Theme.text)
         .preferredColorScheme(.dark)
@@ -21,129 +23,168 @@ struct PopoverView: View {
     }
 
     private var header: some View {
-        HStack(spacing: 14) {
-            PressureRing(percent: store.stats?.pressurePercent ?? 0, color: Theme.color(for: store.stats?.level ?? .normal))
-            VStack(alignment: .leading, spacing: 3) {
-                Text(Theme.label(for: store.stats?.level ?? .normal)).font(.system(size: 13, weight: .semibold))
-                if let s = store.stats {
-                    Text("\(Format.bytes(s.usedBytes)) de \(Format.bytes(s.totalBytes))").foregroundStyle(Theme.muted)
-                }
-                if let b = store.battery, b.onBattery {
-                    Text("Bateria \(b.percent)%" + (store.averageSystemMilliwatts.map { " · " + BatteryText.watts($0) } ?? "") + " · " + BatteryText.forecast(store.minutesLeft))
-                        .foregroundStyle(Theme.muted)
-                    let groups = store.energyGroups
-                    let total = groups.reduce(0) { $0 + $1.milliwatts }
-                    if let top = groups.first, total > 0, top.milliwatts > total * 0.3 {
-                        Text("Maior consumo: \(top.title)").foregroundStyle(Theme.warn).lineLimit(1)
+        let s = store.stats
+        let level = s?.level ?? .normal
+        return HStack(spacing: 14) {
+            PressureRing(percent: s?.pressurePercent ?? 0, color: Theme.color(for: level))
+            VStack(alignment: .leading, spacing: 6) {
+                Text(Theme.label(for: level)).font(.system(size: 14, weight: .semibold))
+                if let s {
+                    Meter(fraction: Double(s.usedBytes) / Double(max(s.totalBytes, 1)), color: Theme.chart["used"] ?? Theme.accent)
+                    HStack(spacing: 0) {
+                        Text(Format.bytes(s.usedBytes)).foregroundStyle(Theme.text)
+                        Text(" / \(Format.bytes(s.totalBytes))").foregroundStyle(Theme.muted2)
                     }
+                    .font(.system(size: 11, weight: .medium).monospacedDigit())
                 }
             }
-            .font(.system(size: 12))
         }
-        .padding(14)
     }
 
     private var charts: some View {
         let s = store.stats
-        return Grid(horizontalSpacing: 14, verticalSpacing: 10) {
+        return Grid(horizontalSpacing: 8, verticalSpacing: 8) {
             GridRow {
-                mini("Memória", s.map { Format.bytes($0.usedBytes) }, key: "used")
-                mini("CPU", s.map { "\(Int($0.cpuPercent))%" }, key: "cpu")
+                tile("Memória", s.map { Format.bytes($0.usedBytes) }, key: "used")
+                tile("CPU", s.map { "\(Int($0.cpuPercent))%" }, key: "cpu")
             }
             GridRow {
-                mini("GPU", s?.gpuPercent.map { "\(Int($0))%" }, key: "gpu")
-                mini("Swap", s.map { Format.bytes($0.swapUsedBytes) }, key: "swap")
+                tile("GPU", s?.gpuPercent.map { "\(Int($0))%" }, key: "gpu")
+                tile("Swap", s.map { Format.bytes($0.swapUsedBytes) }, key: "swap")
             }
         }
     }
 
-    private func mini(_ title: String, _ value: String?, key: String) -> some View {
-        VStack(alignment: .leading, spacing: 3) {
-            HStack {
-                Text(title).foregroundStyle(Theme.muted)
-                Spacer()
-                Text(value ?? "–").font(.system(size: 11, weight: .semibold))
+    private func tile(_ title: String, _ value: String?, key: String) -> some View {
+        let color = Theme.chart[key] ?? Theme.accent
+        return VStack(alignment: .leading, spacing: 2) {
+            HStack(spacing: 5) {
+                Circle().fill(color).frame(width: 6, height: 6)
+                Text(title.uppercased()).font(.system(size: 9.5, weight: .semibold)).tracking(0.6).foregroundStyle(Theme.muted)
             }
-            .font(.system(size: 11))
-            Sparkline(values: store.history[key]?.elements ?? [], color: Theme.chart[key] ?? Theme.accent)
-        }
-    }
-
-    private var forgotten: some View {
-        VStack(alignment: .leading, spacing: 5) {
-            if store.suspects.isEmpty {
-                Text("Nada esquecido").foregroundStyle(Theme.ok).font(.system(size: 12, weight: .semibold))
-            } else {
-                Text("\(store.suspects.count) esquecido\(store.suspects.count == 1 ? "" : "s") · \(Format.bytes(store.suspectBytes))")
-                    .foregroundStyle(Theme.warn).font(.system(size: 12, weight: .semibold))
-                ForEach(store.suspects.prefix(4)) { s in
-                    HStack {
-                        Text([s.row.identified.title, s.row.identified.project].compactMap { $0 }.joined(separator: " · ")).lineLimit(1)
-                        Spacer()
-                        Text("\(Format.age(since: s.row.snapshot.startTime, now: store.now)) · \(Format.bytes(s.row.snapshot.footprintBytes))")
-                            .foregroundStyle(Theme.muted)
-                    }
-                    .font(.system(size: 11.5))
-                }
-            }
+            Text(value ?? "–").font(.system(size: 17, weight: .bold, design: .rounded).monospacedDigit())
+            Sparkline(values: store.history[key]?.elements ?? [], color: color, height: 26).padding(.top, 2)
         }
         .padding(10)
         .frame(maxWidth: .infinity, alignment: .leading)
-        .background(RoundedRectangle(cornerRadius: 9).fill((store.suspects.isEmpty ? Theme.ok : Theme.warn).opacity(0.10)))
-        .overlay(RoundedRectangle(cornerRadius: 9).stroke((store.suspects.isEmpty ? Theme.ok : Theme.warn).opacity(0.3)))
+        .background(RoundedRectangle(cornerRadius: 10).fill(.white.opacity(0.04)))
+        .overlay(RoundedRectangle(cornerRadius: 10).stroke(Theme.line.opacity(0.8)))
     }
 
-    @ViewBuilder
-    private var extras: some View {
+    private var chips: some View {
         let ports = store.highlightedPorts
-        let peak = store.peaks.last
-        if !ports.isEmpty || peak != nil {
-            VStack(alignment: .leading, spacing: 4) {
-                if !ports.isEmpty {
-                    HStack(spacing: 6) {
-                        Text("Portas").foregroundStyle(Theme.muted)
-                        Text(ports.map(String.init).joined(separator: " · ")).font(.system(size: 12, design: .monospaced))
-                    }
-                }
-                if let peak {
-                    HStack(spacing: 6) {
-                        Text("Último pico").foregroundStyle(Theme.muted)
-                        Text(PeakText.when(peak.start, now: store.now) + " · " + PeakText.level(peak.maxLevel))
-                            .foregroundStyle(PeakText.color(peak.maxLevel))
-                    }
-                }
+        return HStack(spacing: 6) {
+            if store.suspects.isEmpty { Chip(icon: "checkmark.circle.fill", text: "Nada esquecido", color: Theme.ok) }
+            if let b = store.battery, b.onBattery {
+                Chip(icon: "battery.75percent", text: "\(b.percent)% · " + BatteryText.forecast(store.minutesLeft), color: Theme.warn)
             }
-            .font(.system(size: 12))
-            .frame(maxWidth: .infinity, alignment: .leading)
+            if let peak = store.peaks.last {
+                Chip(icon: "bolt.fill", text: PeakText.when(peak.start, now: store.now).replacingOccurrences(of: "hoje ", with: ""), color: PeakText.color(peak.maxLevel))
+            }
+            if !ports.isEmpty {
+                Chip(icon: "network", text: "\(ports[0])" + (ports.count > 1 ? " +\(ports.count - 1)" : ""), color: Theme.chart["cpu"] ?? Theme.accent)
+            }
         }
+        .lineLimit(1)
+    }
+
+    private var forgotten: some View {
+        VStack(alignment: .leading, spacing: 6) {
+            HStack(spacing: 6) {
+                Image(systemName: "exclamationmark.triangle.fill")
+                Text("\(store.suspects.count) esquecido\(store.suspects.count == 1 ? "" : "s")")
+                Spacer()
+                Text(Format.bytes(store.suspectBytes)).monospacedDigit()
+            }
+            .font(.system(size: 12, weight: .semibold)).foregroundStyle(Theme.warn)
+            ForEach(store.suspects.prefix(4)) { s in
+                HStack {
+                    Text([s.row.identified.title, s.row.identified.project].compactMap { $0 }.joined(separator: " · ")).lineLimit(1)
+                    Spacer()
+                    Text("\(Format.age(since: s.row.snapshot.startTime, now: store.now)) · \(Format.bytes(s.row.snapshot.footprintBytes))")
+                        .foregroundStyle(Theme.muted).monospacedDigit()
+                }
+                .font(.system(size: 11.5))
+            }
+        }
+        .padding(10)
+        .background(RoundedRectangle(cornerRadius: 10).fill(Theme.warn.opacity(0.08)))
+        .overlay(RoundedRectangle(cornerRadius: 10).stroke(Theme.warn.opacity(0.3)))
     }
 
     private var consumers: some View {
-        VStack(alignment: .leading, spacing: 5) {
-            Text("MAIORES CONSUMIDORES").font(.system(size: 10.5)).foregroundStyle(Theme.muted2)
-            ForEach(Grouping.group(store.rows, mode: .byApp).prefix(3)) { g in
-                HStack {
-                    Text(g.title + (g.subtitle.map { " · \($0)" } ?? "")).lineLimit(1)
-                    Spacer()
-                    Text(Format.bytes(g.footprintBytes)).foregroundStyle(Theme.muted)
+        let groups = Array(Grouping.group(store.rows, mode: .byApp).prefix(4))
+        let top = Double(groups.first?.footprintBytes ?? 1)
+        return VStack(alignment: .leading, spacing: 8) {
+            Text("MAIORES CONSUMIDORES").font(.system(size: 9.5, weight: .semibold)).tracking(0.6).foregroundStyle(Theme.muted2)
+            ForEach(groups) { g in
+                HStack(spacing: 8) {
+                    AppIcon(title: g.title, appPath: g.rows.first?.identified.appBundlePath, size: 18)
+                    VStack(alignment: .leading, spacing: 3) {
+                        HStack {
+                            Text(g.title).font(.system(size: 12, weight: .medium)).lineLimit(1)
+                            Spacer()
+                            Text(Format.bytes(g.footprintBytes)).font(.system(size: 11.5).monospacedDigit()).foregroundStyle(Theme.muted)
+                        }
+                        Meter(fraction: Double(g.footprintBytes) / top, color: Theme.accent, height: 3)
+                    }
                 }
-                .font(.system(size: 12))
             }
-            HStack(spacing: 12) {
-                Button("Abrir janela detalhada") {
-                    store.windowVisible = true
-                    openWindow(id: "main")
-                    NSApp.activate(ignoringOtherApps: true)
-                }
-                .keyboardShortcut("d", modifiers: .command)
-                Spacer()
-                Button("Sair") { NSApp.terminate(nil) }
-            }
-            .buttonStyle(.plain)
-            .foregroundStyle(Theme.accent)
-            .font(.system(size: 12, weight: .semibold))
-            .padding(.top, 8)
         }
+    }
+
+    private var footer: some View {
+        HStack(spacing: 12) {
+            Button {
+                store.windowVisible = true
+                openWindow(id: "main")
+                NSApp.activate(ignoringOtherApps: true)
+            } label: {
+                Label("Abrir janela detalhada", systemImage: "macwindow")
+                    .padding(.horizontal, 10).padding(.vertical, 5)
+                    .background(Capsule().fill(Theme.brand.opacity(0.22)))
+            }
+            .keyboardShortcut("d", modifiers: .command)
+            Spacer()
+            Button("Sair") { NSApp.terminate(nil) }.foregroundStyle(Theme.muted)
+        }
+        .buttonStyle(.plain)
+        .foregroundStyle(Theme.accent)
+        .font(.system(size: 12, weight: .semibold))
+        .padding(.top, 2)
+    }
+}
+
+struct Meter: View {
+    let fraction: Double
+    let color: Color
+    var height: CGFloat = 5
+
+    var body: some View {
+        GeometryReader { geo in
+            ZStack(alignment: .leading) {
+                Capsule().fill(.white.opacity(0.07))
+                Capsule().fill(color).frame(width: geo.size.width * min(max(fraction, 0), 1))
+            }
+        }
+        .frame(height: height)
+    }
+}
+
+struct Chip: View {
+    let icon: String
+    let text: String
+    let color: Color
+
+    var body: some View {
+        HStack(spacing: 4) {
+            Image(systemName: icon).font(.system(size: 9.5, weight: .bold))
+            Text(text).font(.system(size: 11, weight: .medium).monospacedDigit())
+        }
+        .foregroundStyle(color)
+        .padding(.horizontal, 8).padding(.vertical, 4)
+        .background(Capsule().fill(color.opacity(0.12)))
+        .fixedSize()
     }
 }
 
@@ -153,11 +194,17 @@ struct PressureRing: View {
 
     var body: some View {
         ZStack {
-            Circle().stroke(Theme.panel2, lineWidth: 7)
-            Circle().trim(from: 0, to: CGFloat(percent) / 100).stroke(color, style: StrokeStyle(lineWidth: 7, lineCap: .round)).rotationEffect(.degrees(-90))
-            Text("\(percent)%").font(.system(size: 13, weight: .bold))
+            Circle().stroke(.white.opacity(0.07), lineWidth: 8)
+            Circle().trim(from: 0, to: CGFloat(percent) / 100)
+                .stroke(AngularGradient(colors: [color.opacity(0.5), color], center: .center, startAngle: .zero, endAngle: .degrees(360 * Double(percent) / 100)), style: StrokeStyle(lineWidth: 8, lineCap: .round))
+                .rotationEffect(.degrees(-90))
+                .shadow(color: color.opacity(0.5), radius: 4)
+            VStack(spacing: 0) {
+                Text("\(percent)%").font(.system(size: 16, weight: .bold, design: .rounded))
+                Text("pressão").font(.system(size: 8.5, weight: .medium)).foregroundStyle(Theme.muted)
+            }
         }
-        .frame(width: 60, height: 60)
+        .frame(width: 66, height: 66)
     }
 }
 
