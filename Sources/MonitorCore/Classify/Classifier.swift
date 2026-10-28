@@ -63,7 +63,7 @@ public enum Classifier {
     ]
 
     private static let shells: Set<String> = ["zsh", "bash", "fish", "sh"]
-    private static let systemPrefixes = ["/System/Library/", "/usr/libexec/", "/usr/sbin/", "/sbin/"]
+    private static let systemPrefixes = ["/System/Library/", "/System/Volumes/Preboot/Cryptexes/", "/usr/libexec/", "/usr/sbin/", "/sbin/"]
     private static let friendlySystem: [String: String] = [
         "ControlCenter": "Central de Controle",
         "rapportd": "Continuidade (Handoff e AirDrop)",
@@ -113,6 +113,9 @@ public enum Classifier {
         "bird": "iCloud Drive",
         "Dock": "Dock",
         "Finder": "Finder",
+        "com.apple.WebKit.WebContent": "Página web (WebKit)",
+        "com.apple.WebKit.GPU": "Gráficos web (WebKit)",
+        "com.apple.WebKit.Networking": "Rede web (WebKit)",
     ]
     private static let interpreters: [String: String] = [
         "python": "Python", "python3": "Python", "node": "node", "bun": "bun", "deno": "deno", "ruby": "Ruby", "perl": "Perl", "php": "PHP",
@@ -137,7 +140,8 @@ public enum Classifier {
                 let airplay = raw == "ControlCenter" && (ports.contains(5000) || ports.contains(7000))
                 return Identified(kind: .system, title: friendly, subtitle: airplay ? "Receptor AirPlay" : raw, project: nil)
             }
-            return Identified(kind: .system, title: raw, subtitle: command.isEmpty ? path : command, project: nil)
+            let bundle = systemBundle(path)
+            return Identified(kind: .system, title: raw, subtitle: bundle == raw ? nil : bundle, project: nil)
         }
         if let path = p.executablePath, let range = path.range(of: ".AppBundle/") {
             let name = ((path[..<range.lowerBound]) as Substring).split(separator: "/").last.map(String.init) ?? p.name
@@ -182,6 +186,13 @@ public enum Classifier {
         let base = token.replacingOccurrences(of: "-mcp", with: "").replacingOccurrences(of: "mcp", with: "")
         let name = base.split(separator: "@").first.map(String.init) ?? base
         return name.isEmpty ? "Servidor MCP" : name.prefix(1).uppercased() + name.dropFirst() + " MCP"
+    }
+
+    /// Innermost bundle name ("FileProvider" for .../FileProvider.framework/Support/fileproviderd), nil for bare tools.
+    static func systemBundle(_ path: String) -> String? {
+        let exts: Set<String> = ["app", "framework", "xpc", "appex", "bundle", "service", "plugin"]
+        return path.split(separator: "/").dropLast().last { exts.contains((String($0) as NSString).pathExtension) }
+            .map { (String($0) as NSString).deletingPathExtension }
     }
 
     static func outerAppBundle(_ path: String?) -> String? {

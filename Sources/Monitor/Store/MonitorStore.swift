@@ -112,6 +112,47 @@ final class MonitorStore {
         peaks = peakRecorder.episodes
         batterySessions = sessionRecorder.sessions
         appleHealth = UserDefaults.standard.object(forKey: Self.healthKey) as? Int
+        if let saved = try? JSONDecoder().decode(SavedHistory.self, from: Data(contentsOf: Self.historyURL)),
+           Date().timeIntervalSince(saved.at) < 600 {
+            for (key, values) in saved.values where history[key] != nil {
+                values.forEach { history[key]?.append($0) }
+            }
+        }
+    }
+
+    /// Per-app memory 5–10 min ago, for the "who grew" overview.
+    var growthBaseline: [String: UInt64] = [:]
+    var growthSince = Date()
+    @ObservationIgnored private var nextBaseline: [String: UInt64] = [:]
+    @ObservationIgnored private var nextBaselineAt = Date.distantPast
+
+    private func trackGrowth(_ groups: [ProcessGroup], at: Date) {
+        guard at.timeIntervalSince(nextBaselineAt) >= 300 else { return }
+        let current = Dictionary(groups.map { ($0.id, $0.footprintBytes) }, uniquingKeysWith: +)
+        if nextBaselineAt == .distantPast {
+            (growthBaseline, growthSince) = (current, at)
+        } else {
+            (growthBaseline, growthSince) = (nextBaseline, nextBaselineAt)
+        }
+        (nextBaseline, nextBaselineAt) = (current, at)
+    }
+
+    private struct SavedHistory: Codable {
+        var at: Date
+        var values: [String: [Double]]
+    }
+
+    private static let historyURL = FileManager.default.urls(for: .applicationSupportDirectory, in: .userDomainMask)[0]
+        .appendingPathComponent("Monitor/history.json")
+    @ObservationIgnored private var historySaves = 0
+
+    /// Keeps the sparklines filled across relaunches; anything older than 10 min is dropped on load.
+    private func saveHistory() {
+        historySaves += 1
+        guard historySaves % 5 == 0,
+              let data = try? JSONEncoder().encode(SavedHistory(at: Date(), values: history.mapValues(\.elements))) else { return }
+        try? FileManager.default.createDirectory(at: Self.historyURL.deletingLastPathComponent(), withIntermediateDirectories: true)
+        try? data.write(to: Self.historyURL, options: .atomic)
     }
 
     private static let healthKey = "appleBatteryHealth"
@@ -339,6 +380,7 @@ final class MonitorStore {
         history["cpu"]?.append(s.cpuPercent)
         history["swap"]?.append(Double(s.swapUsedBytes))
         if let g = s.gpuPercent { history["gpu"]?.append(g) }
+        saveHistory()
         let cpu = cpuTracker.update(snaps, at: at)
         let gpu = gpuReading.map { r in gpuTracker.update(r.perPid, starts: Dictionary(snaps.map { ($0.id, $0.startTime) }, uniquingKeysWith: { a, _ in a }), at: at) } ?? [:]
         let energy = energyTracker.update(snaps, at: at)
@@ -378,6 +420,7 @@ final class MonitorStore {
         suspects = ForgottenDetector.detect(rows, allPids: Set(snaps.map(\.id)), now: at, ignore: ignore, stoppedSince: stoppedByPid)
         runaways = runawayTracker.update(rows, at: at, myUid: getuid(), ignore: ignore, onBattery: onBattery)
         let appGroups = Grouping.group(rows, mode: .byApp)
+        trackGrowth(appGroups, at: at)
         if let b = batteryReading {
             let interval = min(lastCycle.map { at.timeIntervalSince($0) } ?? 0, 3 * (windowVisible ? 3 : 10))
             if sessionRecorder.update(battery: b, groups: appGroups, at: at, interval: max(0, interval)) {

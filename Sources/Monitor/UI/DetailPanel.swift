@@ -14,7 +14,7 @@ struct DetailPanel: View {
             if let target = target {
                 content(target)
             } else {
-                Text("Selecione um processo para ver os detalhes.").foregroundStyle(Theme.muted).font(.system(size: 12))
+                overview
             }
             Spacer()
         }
@@ -66,6 +66,7 @@ struct DetailPanel: View {
             if isSingle {
                 field("Pai", parent(r))
                 field("PID", String(r.id))
+                if let path = r.snapshot.executablePath { field("Caminho", abbreviate(path), muted: true) }
                 if r.snapshot.state == .stopped { field("Estado", "Suspenso (Ctrl+Z)") }
             } else {
                 field("Processos", String(t.group.rows.count))
@@ -117,6 +118,79 @@ struct DetailPanel: View {
                 Task { await store.refresh() }
             }))
             .toggleStyle(.checkbox).font(.system(size: 11)).foregroundStyle(Theme.muted).padding(.top, 10)
+    }
+
+    private var overview: some View {
+        let groups = Grouping.group(store.rows, mode: .byApp)
+        let cores = ProcessInfo.processInfo.activeProcessorCount
+        let cpu = groups.sorted { $0.cpuPercent > $1.cpuPercent }.prefix(4).filter { $0.cpuPercent >= 0.5 }
+        let grew = groups.compactMap { g -> (ProcessGroup, Int64)? in
+            guard let before = store.growthBaseline[g.id] else { return nil }
+            let delta = Int64(g.footprintBytes) - Int64(before)
+            return delta >= 20 << 20 ? (g, delta) : nil
+        }.sorted { $0.1 > $1.1 }.prefix(4)
+        let minutes = max(1, Int(store.now.timeIntervalSince(store.growthSince) / 60))
+        return VStack(alignment: .leading, spacing: 18) {
+            section("Mais CPU agora", color: Theme.chart["cpu"] ?? Theme.accent) {
+                if cpu.isEmpty { empty("Tudo em repouso") }
+                let top = max(cpu.first?.cpuPercent ?? 1, 1)
+                ForEach(Array(cpu)) { g in
+                    bar(g, value: Format.cpu(g.cpuPercent, cores: cores), fraction: g.cpuPercent / top, color: Theme.chart["cpu"] ?? Theme.accent)
+                }
+            }
+            section("Mais cresceu · \(minutes) min", color: Theme.chart["used"] ?? Theme.accent) {
+                if grew.isEmpty { empty("Nada cresceu mais de 20 MB") }
+                let top = Double(grew.first?.1 ?? 1)
+                ForEach(Array(grew), id: \.0.id) { g, delta in
+                    bar(g, value: "+" + Format.bytes(UInt64(delta)), fraction: Double(delta) / top, color: Theme.chart["used"] ?? Theme.accent)
+                }
+            }
+            if let peak = store.peaks.last {
+                section("Último pico", color: PeakText.color(peak.maxLevel)) {
+                    HStack(spacing: 6) {
+                        Chip(icon: "bolt.fill", text: PeakText.when(peak.start, now: store.now), color: PeakText.color(peak.maxLevel))
+                        Chip(icon: "gauge.with.dots.needle.67percent", text: "\(peak.maxPressure)%", color: PeakText.color(peak.maxLevel))
+                    }
+                    ForEach(peak.top.prefix(3), id: \.title) { item in
+                        HStack {
+                            Text(item.title).lineLimit(1)
+                            Spacer()
+                            Text(Format.bytes(item.bytes)).foregroundStyle(Theme.muted).monospacedDigit()
+                        }
+                        .font(.system(size: 11.5))
+                    }
+                }
+            }
+            Text("Selecione um processo para ver os detalhes.").foregroundStyle(Theme.muted2).font(.system(size: 11))
+        }
+    }
+
+    private func section<Content: View>(_ title: String, color: Color, @ViewBuilder content: () -> Content) -> some View {
+        VStack(alignment: .leading, spacing: 8) {
+            HStack(spacing: 5) {
+                Circle().fill(color).frame(width: 6, height: 6)
+                Text(title.uppercased()).font(.system(size: 9.5, weight: .semibold)).tracking(0.6).foregroundStyle(Theme.muted)
+            }
+            content()
+        }
+    }
+
+    private func bar(_ g: ProcessGroup, value: String, fraction: Double, color: Color) -> some View {
+        HStack(spacing: 8) {
+            AppIcon(title: g.title, appPath: g.rows.first?.identified.appBundlePath, size: 18)
+            VStack(alignment: .leading, spacing: 3) {
+                HStack {
+                    Text(g.title).font(.system(size: 12, weight: .medium)).lineLimit(1)
+                    Spacer()
+                    Text(value).font(.system(size: 11.5).monospacedDigit()).foregroundStyle(Theme.muted)
+                }
+                Meter(fraction: fraction, color: color, height: 3)
+            }
+        }
+    }
+
+    private func empty(_ text: String) -> some View {
+        Text(text).font(.system(size: 11.5)).foregroundStyle(Theme.muted2)
     }
 
     private func field(_ k: String, _ v: String, muted: Bool = false) -> some View {

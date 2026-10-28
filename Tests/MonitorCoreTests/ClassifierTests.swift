@@ -59,3 +59,12 @@ func classifiesKnownCases(name: String, args: [String], cwd: String?, kind: Proc
     let id = Classifier.classify(.fixture(name: "next-server (v16.2.4)", arguments: ["next-server"], cwd: sub.path), ports: [])
     #expect(id.project == root.lastPathComponent)
 }
+
+@Test func systemSubtitleIsBundleNameNotPath() {
+    let fp = ProcessSnapshot.fixture(name: "fileproviderd", arguments: [], uid: 0, executablePath: "/System/Library/PrivateFrameworks/FileProvider.framework/Support/fileproviderd")
+    #expect(Classifier.classify(fp, ports: []).subtitle == "FileProvider")
+    let spot = ProcessSnapshot.fixture(name: "Spotlight", arguments: [], uid: 501, executablePath: "/System/Library/CoreServices/Spotlight.app/Contents/MacOS/Spotlight")
+    #expect(Classifier.classify(spot, ports: []).subtitle == nil)
+    let logd = ProcessSnapshot.fixture(name: "logd", arguments: [], uid: 0, executablePath: "/usr/libexec/logd")
+    #expect(Classifier.classify(logd, ports: []).subtitle == "logd")
+}
