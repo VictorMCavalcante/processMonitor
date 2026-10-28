@@ -22,10 +22,12 @@ public struct ProcessSnapshot: Sendable, Identifiable, Equatable {
     public var ttyName: String?
     public var energyNj: UInt64
     public var wakeups: UInt64
+    /// App that launched this XPC helper (WebKit processes are children of launchd, not of the app).
+    public var hostAppPath: String?
 
     public init(id: Int32, ppid: Int32, uid: UInt32, name: String, executablePath: String?, arguments: [String], cwd: String?,
                 startTime: Date, state: ProcessState, footprintBytes: UInt64, cpuTimeNs: UInt64, ttyName: String?,
-                energyNj: UInt64 = 0, wakeups: UInt64 = 0) {
+                energyNj: UInt64 = 0, wakeups: UInt64 = 0, hostAppPath: String? = nil) {
         self.id = id
         self.ppid = ppid
         self.uid = uid
@@ -40,5 +42,6 @@ public struct ProcessSnapshot: Sendable, Identifiable, Equatable {
         self.ttyName = ttyName
         self.energyNj = energyNj
         self.wakeups = wakeups
+        self.hostAppPath = hostAppPath
     }
 }

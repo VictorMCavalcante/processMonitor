@@ -68,3 +68,17 @@ func classifiesKnownCases(name: String, args: [String], cwd: String?, kind: Proc
     let logd = ProcessSnapshot.fixture(name: "logd", arguments: [], uid: 0, executablePath: "/usr/libexec/logd")
     #expect(Classifier.classify(logd, ports: []).subtitle == "logd")
 }
+
+@Test func webKitHelperJoinsHostApp() {
+    var web = ProcessSnapshot.fixture(name: "com.apple.WebKit.WebContent", executablePath: "/System/Library/Frameworks/WebKit.framework/XPCServices/com.apple.WebKit.WebContent.xpc/Contents/MacOS/com.apple.WebKit.WebContent")
+    web.hostAppPath = "/Applications/Safari.app"
+    let id = Classifier.classify(web, ports: [])
+    #expect(id.appBundlePath == "/Applications/Safari.app")
+    #expect(id.title == "Safari")
+    #expect(id.subtitle == "Página web (WebKit)")
+}
+
+@Test func cryptexAppIsNotSystem() {
+    let safari = ProcessSnapshot.fixture(name: "Safari", executablePath: "/System/Volumes/Preboot/Cryptexes/App/System/Applications/Safari.app/Contents/MacOS/Safari")
+    #expect(Classifier.classify(safari, ports: []).kind == .appProcess)
+}

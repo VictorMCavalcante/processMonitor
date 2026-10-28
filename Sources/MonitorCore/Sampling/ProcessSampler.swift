@@ -66,6 +66,7 @@ public struct ProcessSampler: Sendable {
         guard let base = Self.basics(pid) else { return nil }
         let args = Self.arguments(pid)
         let exe = Self.path(pid)
+        let name = Self.fullName(base.name, path: exe)
         var usage = rusage_info_v6()
         let rusageOK = withUnsafeMutablePointer(to: &usage) {
             $0.withMemoryRebound(to: rusage_info_t?.self, capacity: 1) { proc_pid_rusage(pid, RUSAGE_INFO_V6, $0) == 0 }
@@ -75,7 +76,7 @@ public struct ProcessSampler: Sendable {
             id: pid,
             ppid: base.ppid,
             uid: base.uid,
-            name: Self.fullName(base.name, path: exe),
+            name: name,
             executablePath: exe,
             arguments: args,
             cwd: Self.cwd(pid),
@@ -85,7 +86,8 @@ public struct ProcessSampler: Sendable {
             cpuTimeNs: cpuAbs * timebase.numer / timebase.denom,
             ttyName: Self.ttyName(base.tdev),
             energyNj: rusageOK ? usage.ri_energy_nj : 0,
-            wakeups: rusageOK ? usage.ri_interrupt_wkups + usage.ri_pkg_idle_wkups : 0
+            wakeups: rusageOK ? usage.ri_interrupt_wkups + usage.ri_pkg_idle_wkups : 0,
+            hostAppPath: name.hasPrefix("com.apple.WebKit.") ? Self.responsibleApp(pid) : nil
         )
     }
 
@@ -138,6 +140,16 @@ public struct ProcessSampler: Sendable {
         guard name.count >= 15, let path else { return name }
         let base = (path as NSString).lastPathComponent
         return base.hasPrefix(name) ? base : name
+    }
+
+    private typealias ResponsibleFn = @convention(c) (pid_t) -> pid_t
+    // Private libsystem call Activity Monitor relies on; nil if Apple ever removes it.
+    private static let responsible: ResponsibleFn? = dlsym(UnsafeMutableRawPointer(bitPattern: -2), "responsibility_get_pid_responsible_for_pid")
+        .map { unsafeBitCast($0, to: ResponsibleFn.self) }
+
+    static func responsibleApp(_ pid: Int32) -> String? {
+        guard let owner = responsible?(pid), owner > 0, owner != pid else { return nil }
+        return Classifier.outerAppBundle(path(owner))
     }
 
     private static func path(_ pid: Int32) -> String? {

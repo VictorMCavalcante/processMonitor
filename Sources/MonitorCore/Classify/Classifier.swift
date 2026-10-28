@@ -63,7 +63,7 @@ public enum Classifier {
     ]
 
     private static let shells: Set<String> = ["zsh", "bash", "fish", "sh"]
-    private static let systemPrefixes = ["/System/Library/", "/System/Volumes/Preboot/Cryptexes/", "/usr/libexec/", "/usr/sbin/", "/sbin/"]
+    private static let systemPrefixes = ["/System/Library/", "/System/Volumes/Preboot/Cryptexes/OS/", "/usr/libexec/", "/usr/sbin/", "/sbin/"]
     private static let friendlySystem: [String: String] = [
         "ControlCenter": "Central de Controle",
         "rapportd": "Continuidade (Handoff e AirDrop)",
@@ -129,6 +129,10 @@ public enum Classifier {
         let project = projectName(from: p.cwd)
         let portText = ports.isEmpty ? nil : ports.map { ":\($0)" }.joined(separator: " ")
 
+        if let app = p.hostAppPath {
+            let title = ((app as NSString).lastPathComponent as NSString).deletingPathExtension
+            return Identified(kind: .appProcess, title: title, subtitle: friendlySystem[p.name] ?? p.name, project: nil, appBundlePath: app)
+        }
         if let path = p.executablePath, path.contains(virtualMachineMarker) {
             return context.dockerRunning
                 ? Identified(kind: .appProcess, title: "Docker Desktop", subtitle: "máquina virtual", appBundlePath: dockerAppPath)
