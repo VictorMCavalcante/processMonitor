@@ -74,6 +74,45 @@ public enum Classifier {
         "mdworker_shared": "Spotlight (indexação)",
         "coreaudiod": "Áudio do sistema",
         "bluetoothd": "Bluetooth",
+        "ANEStorageMaintainer": "Neural Engine (manutenção)",
+        "aned": "Neural Engine",
+        "AMPDeviceDiscoveryAgent": "Descoberta de iPhone/iPad",
+        "AirPlayXPCHelper": "AirPlay",
+        "AirPlayUIAgent": "AirPlay",
+        "AccessibilityUIServer": "Acessibilidade",
+        "APFSUserAgent": "Disco (APFS)",
+        "AppleSpell": "Corretor ortográfico",
+        "AppleIDSettings": "Conta Apple",
+        "launchd": "Inicializador do sistema",
+        "logd": "Registro de logs",
+        "powerd": "Gerenciamento de energia",
+        "hidd": "Teclado, mouse e trackpad",
+        "cfprefsd": "Preferências",
+        "trustd": "Certificados",
+        "nsurlsessiond": "Downloads em segundo plano",
+        "softwareupdated": "Atualização de software",
+        "backupd": "Time Machine",
+        "photoanalysisd": "Fotos (análise)",
+        "mediaanalysisd": "Análise de mídia",
+        "corespotlightd": "Spotlight (indexação)",
+        "airportd": "Wi-Fi",
+        "locationd": "Localização",
+        "configd": "Rede",
+        "opendirectoryd": "Contas de usuário",
+        "loginwindow": "Sessão de login",
+        "UserEventAgent": "Eventos do sistema",
+        "distnoted": "Notificações internas",
+        "notifyd": "Notificações internas",
+        "fseventsd": "Monitor de arquivos",
+        "kernelmanagerd": "Extensões do kernel",
+        "symptomsd": "Diagnóstico de rede",
+        "biomed": "Dados de uso (Siri)",
+        "suggestd": "Sugestões (Siri)",
+        "remindd": "Lembretes",
+        "cloudd": "iCloud",
+        "bird": "iCloud Drive",
+        "Dock": "Dock",
+        "Finder": "Finder",
     ]
     private static let interpreters: [String: String] = [
         "python": "Python", "python3": "Python", "node": "node", "bun": "bun", "deno": "deno", "ruby": "Ruby", "perl": "Perl", "php": "PHP",
@@ -98,7 +137,7 @@ public enum Classifier {
                 let airplay = raw == "ControlCenter" && (ports.contains(5000) || ports.contains(7000))
                 return Identified(kind: .system, title: friendly, subtitle: airplay ? "Receptor AirPlay" : raw, project: nil)
             }
-            return Identified(kind: .system, title: raw, subtitle: command.isEmpty ? nil : command, project: nil)
+            return Identified(kind: .system, title: raw, subtitle: command.isEmpty ? path : command, project: nil)
         }
         if let path = p.executablePath, let range = path.range(of: ".AppBundle/") {
             let name = ((path[..<range.lowerBound]) as Substring).split(separator: "/").last.map(String.init) ?? p.name

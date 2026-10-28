@@ -11,7 +11,42 @@ public struct ProcessSampler: Sendable {
     }
 
     public func sample() -> [ProcessSnapshot] {
-        Self.allPids().compactMap { read($0) }
+        var snaps = Self.allPids().compactMap { read($0) }
+        // Other users' processes (root, system daemons) refuse proc_pid_rusage; setuid ps can read them.
+        // ponytail: one ps spawn per refresh (~15 ms), rss instead of phys_footprint for those rows.
+        let blocked = snaps.indices.filter { snaps[$0].footprintBytes == 0 && snaps[$0].cpuTimeNs == 0 }
+        if !blocked.isEmpty, let out = SystemCommandRunner().run("/bin/ps", ["-axo", "pid=,rss=,time="], timeout: 2)?.output {
+            let usage = Self.parsePS(out)
+            for i in blocked {
+                guard let u = usage[snaps[i].id] else { continue }
+                snaps[i].footprintBytes = u.rssBytes
+                snaps[i].cpuTimeNs = u.cpuNs
+            }
+        }
+        return snaps
+    }
+
+    /// Parses `ps -axo pid=,rss=,time=` lines; time is `[d-][hh:]mm:ss.cc`.
+    static func parsePS(_ output: String) -> [Int32: (rssBytes: UInt64, cpuNs: UInt64)] {
+        var result: [Int32: (rssBytes: UInt64, cpuNs: UInt64)] = [:]
+        for line in output.split(separator: "\n") {
+            let f = line.split(separator: " ", omittingEmptySubsequences: true)
+            guard f.count == 3, let pid = Int32(f[0]), let kb = UInt64(f[1]), let cpu = cpuSeconds(f[2]) else { continue }
+            result[pid] = (kb * 1024, UInt64(cpu * 1e9))
+        }
+        return result
+    }
+
+    static func cpuSeconds(_ text: Substring) -> Double? {
+        let dayParts = text.split(separator: "-")
+        let days = dayParts.count == 2 ? Double(dayParts[0]) : 0
+        guard let days, let clock = dayParts.last else { return nil }
+        var total = 0.0
+        for part in clock.split(separator: ":") {
+            guard let v = Double(part) else { return nil }
+            total = total * 60 + v
+        }
+        return days * 86400 + total
     }
 
     public func snapshot(pid: Int32) -> ProcessSnapshot? {
@@ -30,6 +65,7 @@ public struct ProcessSampler: Sendable {
     private func read(_ pid: Int32) -> ProcessSnapshot? {
         guard let base = Self.basics(pid) else { return nil }
         let args = Self.arguments(pid)
+        let exe = Self.path(pid)
         var usage = rusage_info_v6()
         let rusageOK = withUnsafeMutablePointer(to: &usage) {
             $0.withMemoryRebound(to: rusage_info_t?.self, capacity: 1) { proc_pid_rusage(pid, RUSAGE_INFO_V6, $0) == 0 }
@@ -39,8 +75,8 @@ public struct ProcessSampler: Sendable {
             id: pid,
             ppid: base.ppid,
             uid: base.uid,
-            name: base.name,
-            executablePath: Self.path(pid),
+            name: Self.fullName(base.name, path: exe),
+            executablePath: exe,
             arguments: args,
             cwd: Self.cwd(pid),
             startTime: base.start,
@@ -95,6 +131,13 @@ public struct ProcessSampler: Sendable {
         let full = withUnsafeBytes(of: &b.pbi_name) { String(decoding: $0.prefix { $0 != 0 }, as: UTF8.self) }
         if !full.isEmpty { return full }
         return withUnsafeBytes(of: &b.pbi_comm) { String(decoding: $0.prefix { $0 != 0 }, as: UTF8.self) }
+    }
+
+    /// The kernel name is cut at 16 chars (MAXCOMLEN) when only kinfo_proc is readable; the path has it whole.
+    static func fullName(_ name: String, path: String?) -> String {
+        guard name.count >= 15, let path else { return name }
+        let base = (path as NSString).lastPathComponent
+        return base.hasPrefix(name) ? base : name
     }
 
     private static func path(_ pid: Int32) -> String? {
