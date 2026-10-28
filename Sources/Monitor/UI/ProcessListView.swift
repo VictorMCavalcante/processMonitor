@@ -135,7 +135,8 @@ struct CloseButton: View {
             Image(systemName: "xmark").font(.system(size: 10, weight: .bold))
         }
         .buttonStyle(.plain)
-        .foregroundStyle(reason == nil ? Theme.muted : Theme.muted2.opacity(0.4))
+        .foregroundStyle(Theme.muted)
+        .opacity(reason == nil ? 1 : 0)
         .disabled(reason != nil)
         .modifier(DisabledReason(reason: reason))
     }

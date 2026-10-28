@@ -138,10 +138,10 @@ struct DetailPanel: View {
                     bar(g, value: Format.cpu(g.cpuPercent, cores: cores), fraction: g.cpuPercent / top, color: Theme.chart["cpu"] ?? Theme.accent)
                 }
             }
-            section("Mais cresceu · \(minutes) min", color: Theme.chart["used"] ?? Theme.accent) {
-                if grew.isEmpty { empty("Nada cresceu mais de 20 MB") }
+            section("Mais cresceu" + (minutes >= 3 ? " · \(minutes) min" : ""), color: Theme.chart["used"] ?? Theme.accent) {
+                if minutes < 3 { empty("Medindo… aparece após alguns minutos") } else if grew.isEmpty { empty("Nada cresceu mais de 20 MB") }
                 let top = Double(grew.first?.1 ?? 1)
-                ForEach(Array(grew), id: \.0.id) { g, delta in
+                ForEach(minutes < 3 ? [] : Array(grew), id: \.0.id) { g, delta in
                     bar(g, value: "+" + Format.bytes(UInt64(delta)), fraction: Double(delta) / top, color: Theme.chart["used"] ?? Theme.accent)
                 }
             }

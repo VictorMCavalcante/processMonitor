@@ -119,7 +119,7 @@ struct BatteryView: View {
             if let system = store.averageSystemMilliwatts {
                 line {
                     Image(systemName: "display").foregroundStyle(Theme.muted).frame(width: 22)
-                    Text("Sistema e tela").fontWeight(.semibold)
+                    Text("Sistema, tela e macOS").fontWeight(.semibold)
                     Tag(text: "estimado", color: Theme.accent)
                     Spacer()
                     Text("~\(Int(max(0, system - total).rounded())) mW").frame(width: 90, alignment: .trailing)
