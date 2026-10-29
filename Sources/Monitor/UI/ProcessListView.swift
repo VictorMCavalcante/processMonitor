@@ -87,8 +87,9 @@ struct ProcessListView: View {
         return columns(
             icon: AnyView(Color.clear.frame(width: 20, height: 1)),
             name: AnyView(HStack(spacing: 6) {
-                Text(r.snapshot.name).lineLimit(1)
-                Text(([r.ports.isEmpty ? nil : r.ports.map { ":\($0)" }.joined(separator: " ")] + ["PID \(r.id)"]).compactMap { $0 }.joined(separator: " · "))
+                let title = store.sessionTitles[r.id]
+                Text(title ?? r.snapshot.name).lineLimit(1)
+                Text(([title == nil ? nil : r.snapshot.name, r.ports.isEmpty ? nil : r.ports.map { ":\($0)" }.joined(separator: " ")] + ["PID \(r.id)"]).compactMap { $0 }.joined(separator: " · "))
                     .foregroundStyle(Theme.muted).font(.system(size: 11))
                 if r.snapshot.state == .stopped { Tag(text: "suspenso", color: Theme.bad) }
             }.padding(.leading, 18)),

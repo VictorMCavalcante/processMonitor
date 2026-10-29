@@ -58,6 +58,8 @@ final class MonitorStore {
     @ObservationIgnored private var lastPortScan = Date.distantPast
     @ObservationIgnored private var loop: Task<Void, Never>?
     @ObservationIgnored private var stoppedSince: [String: Date] = [:]
+    @ObservationIgnored private var titleCheckedAt: [Int32: Date] = [:]
+    var sessionTitles: [Int32: String] = [:]
     @ObservationIgnored var onCycle: (@MainActor (MonitorStore) -> Void)?
     var battery: BatteryReading?
     var minutesLeft: Int?
@@ -359,10 +361,13 @@ final class MonitorStore {
         let scanPorts = Date().timeIntervalSince(lastPortScan) >= 15
         let visible = windowVisible
         let previous = rows
-        let (snaps, newSockets, gpuReading, batteryReading, blockers) = await Task.detached(priority: .utility) { () -> ([ProcessSnapshot], [ListeningSocket]?, GPUReading?, BatteryReading?, [SleepBlocker]?) in
+        let titlePids = previous.filter { $0.identified.kind == .claudeSession && sessionTitles[$0.id] == nil && Date().timeIntervalSince(titleCheckedAt[$0.id] ?? .distantPast) >= 60 }.map(\.id)
+        for pid in titlePids { titleCheckedAt[pid] = Date() }
+        let (snaps, newSockets, gpuReading, batteryReading, blockers, titles) = await Task.detached(priority: .utility) { () -> ([ProcessSnapshot], [ListeningSocket]?, GPUReading?, BatteryReading?, [SleepBlocker]?, [Int32: String]) in
             let snaps = ProcessSampler().sample()
             let blockers = visible ? Self.arrange(SleepBlockers.build(SleepBlockers.read(now: Date()), rows: previous, all: snaps, now: Date()), rows: previous) : nil
-            return (snaps, scanPorts ? PortScanner.scanSockets() : nil, GPUSampler.read(), BatterySampler.read(), blockers)
+            let titles = Dictionary(uniqueKeysWithValues: titlePids.compactMap { pid in ClaudeSessionTitle.lookup(pid: pid).map { (pid, $0) } })
+            return (snaps, scanPorts ? PortScanner.scanSockets() : nil, GPUSampler.read(), BatterySampler.read(), blockers, titles)
         }.value
         if let newSockets {
             sockets = newSockets
@@ -386,6 +391,10 @@ final class MonitorStore {
         let energy = energyTracker.update(snaps, at: at)
         let live = snaps.filter { $0.state != .zombie && $0.id != getpid() }
         allSnapshots = snaps
+        let livePids = Set(live.map(\.id))
+        titleCheckedAt = titleCheckedAt.filter { livePids.contains($0.key) }
+        let keptTitles = sessionTitles.filter { livePids.contains($0.key) }.merging(titles) { _, new in new }
+        if keptTitles != sessionTitles { sessionTitles = keptTitles }
         let context = ClassifyContext(dockerRunning: Classifier.dockerRunning(in: snaps))
         dockerRunning = context.dockerRunning
         rows = live.map { snap in

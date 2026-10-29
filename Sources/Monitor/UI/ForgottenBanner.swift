@@ -18,7 +18,7 @@ struct ForgottenBanner: View {
                 .buttonStyle(PillButton(color: Theme.bad))
                 .disabled(selected.isEmpty)
             }
-            FlowChips(suspects: store.suspects, now: store.now, unchecked: $unchecked)
+            FlowChips(suspects: store.suspects, titles: store.sessionTitles, now: store.now, unchecked: $unchecked)
         }
         .font(.system(size: 12))
         .padding(10)
@@ -30,6 +30,7 @@ struct ForgottenBanner: View {
 
 private struct FlowChips: View {
     let suspects: [Suspect]
+    let titles: [Int32: String]
     let now: Date
     @Binding var unchecked: Set<Int32>
 
@@ -38,7 +39,7 @@ private struct FlowChips: View {
             HStack(spacing: 6) {
                 ForEach(suspects) { s in
                     Toggle(isOn: Binding(get: { !unchecked.contains(s.id) }, set: { on in if on { unchecked.remove(s.id) } else { unchecked.insert(s.id) } })) {
-                        Text([s.row.identified.title, s.row.identified.project, Format.age(since: s.row.snapshot.startTime, now: now)].compactMap { $0 }.joined(separator: " · "))
+                        Text([titles[s.id] ?? s.row.identified.title, s.row.identified.project, Format.age(since: s.row.snapshot.startTime, now: now)].compactMap { $0 }.joined(separator: " · "))
                     }
                     .toggleStyle(.checkbox)
                     .padding(.horizontal, 10).padding(.vertical, 3)

@@ -72,3 +72,25 @@ import Testing
     #expect(TerminationPlanner.needsConfirmation(.fixture(kind: .claudeSession, pids: [1], in: active), all: active, myUid: 501))
     #expect(!TerminationPlanner.needsConfirmation(.fixture(kind: .claudeSession, pids: [1], in: stopped), all: stopped, myUid: 501))
 }
+
+@Test func resumedStoppedProcessThatStaysAliveIsKilled() {
+    final class Fake: Signaler, @unchecked Sendable {
+        var sent: [Int32] = []
+        func currentStartTime(of pid: Int32) -> Date? { Date(timeIntervalSince1970: 1) }
+        func send(_ s: Int32, to pid: Int32) -> Int32 { sent.append(s); return 0 }
+    }
+    let f = Fake()
+    _ = TerminationExecutor.run([.init(pid: 5, startTime: Date(timeIntervalSince1970: 1), signals: [SIGCONT, SIGTERM])], signaler: f, grace: 0.1)
+    #expect(f.sent == [SIGCONT, SIGTERM, SIGKILL])
+}
+
+@Test func claudeTitlePrefersCustomOverAi() {
+    let text = """
+    {"type":"user","message":{"content":"oi"}}
+    {"type":"ai-title","aiTitle":"Planejamento de navegador"}
+    {"type":"custom-title","customTitle":"Navegador"}
+    """
+    #expect(ClaudeSessionTitle.title(inTranscript: text) == "Navegador")
+    #expect(ClaudeSessionTitle.title(inTranscript: #"{"type":"ai-title","aiTitle":"X"}"#) == "X")
+    #expect(ClaudeSessionTitle.title(inTranscript: "{}") == nil)
+}

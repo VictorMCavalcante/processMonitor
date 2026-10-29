@@ -33,7 +33,7 @@ public struct SystemSignaler: Signaler {
     public init() {}
 
     public func currentStartTime(of pid: Int32) -> Date? {
-        ProcessSampler().snapshot(pid: pid)?.startTime
+        ProcessSampler().snapshot(pid: pid).flatMap { $0.state == .zombie ? nil : $0.startTime }
     }
 
     public func send(_ signal: Int32, to pid: Int32) -> Int32 {
@@ -142,10 +142,16 @@ public enum TerminationPlanner {
 }
 
 public enum TerminationExecutor {
-    public static func run(_ steps: [TerminationStep], signaler: Signaler) -> [Int32: String] {
+    /// A suspended job resumed in the background re-stops (SIGTTIN/SIGTTOU) as soon as its SIGTERM
+    /// handler touches the terminal, so it never exits. Give it `grace` seconds, then SIGKILL.
+    public static func run(_ steps: [TerminationStep], signaler: Signaler, grace: TimeInterval = 2) -> [Int32: String] {
         var failures: [Int32: String] = [:]
+        func alive(_ step: TerminationStep) -> Bool {
+            signaler.currentStartTime(of: step.pid).map { abs($0.timeIntervalSince(step.startTime)) < 0.001 } ?? false
+        }
+        var resumed: [TerminationStep] = []
         for step in steps {
-            guard let current = signaler.currentStartTime(of: step.pid), abs(current.timeIntervalSince(step.startTime)) < 0.001 else {
+            guard alive(step) else {
                 failures[step.pid] = TerminationPlanner.alreadyGone
                 continue
             }
@@ -155,7 +161,11 @@ public enum TerminationExecutor {
                 if err == EPERM { failures[step.pid] = "Sem permissão para fechar este processo."; break }
                 if err != 0 { failures[step.pid] = "Não foi possível fechar (erro \(err))."; break }
             }
+            if step.signals.first == SIGCONT && step.signals.last != SIGKILL && failures[step.pid] == nil { resumed.append(step) }
         }
+        let deadline = Date().addingTimeInterval(grace)
+        while resumed.contains(where: alive), Date() < deadline { usleep(100_000) }
+        for step in resumed where alive(step) { _ = signaler.send(SIGKILL, to: step.pid) }
         return failures
     }
 }
