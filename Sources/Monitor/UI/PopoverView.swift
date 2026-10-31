@@ -20,6 +20,29 @@ struct PopoverView: View {
         .foregroundStyle(Theme.text)
         .preferredColorScheme(.dark)
         .tint(Theme.brand)
+        .onAppear {
+            // MenuBarExtra(.window) ignores Esc; close the panel ourselves while it's shown.
+            escMonitor = NSEvent.addLocalMonitorForEvents(matching: .keyDown) { event in
+                guard event.keyCode == 53, event.window?.identifier?.rawValue.hasPrefix("main") != true else { return event }
+                // close() desyncs SwiftUI's open state (next click does nothing); toggle via the status item instead.
+                let closed = MainActor.assumeIsolated {
+                    let button = NSApp.windows.lazy.compactMap { Self.statusButton(in: $0.contentView) }.first
+                    button?.performClick(nil)
+                    return button != nil
+                }
+                return closed ? nil : event
+            }
+        }
+        .onDisappear {
+            if let escMonitor { NSEvent.removeMonitor(escMonitor) }
+            escMonitor = nil
+        }
+    }
+
+    @State private var escMonitor: Any?
+
+    private static func statusButton(in view: NSView?) -> NSStatusBarButton? {
+        view as? NSStatusBarButton ?? view?.subviews.lazy.compactMap(statusButton).first
     }
 
     private var header: some View {
