@@ -48,6 +48,9 @@ public enum TerminationPlanner {
     private static let terminalApps: Set<String> = ["Terminal", "iTerm", "iTerm2", "Ghostty", "Warp", "WezTerm", "Alacritty", "kitty", "Hyper"]
 
     public static func plan(_ group: ProcessGroup, all: [ProcessSnapshot], mode: TerminationMode, myUid: UInt32) -> TerminationPlan {
+        if group.kind == .system, group.title == Classifier.fleetTitle {
+            return .notAllowed(reason: "Gerenciado pela empresa (Fleet). Roda como root e o agente reabre o que for fechado.")
+        }
         if group.kind == .system {
             return .notAllowed(reason: "Processo do sistema. Fechar pode deixar o Mac instável ou encerrar sua sessão.")
         }

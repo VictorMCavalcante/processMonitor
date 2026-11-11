@@ -152,7 +152,14 @@ public enum Classifier {
         return id
     }
 
+    /// Fleet (fleetdm.com) device management: orbit agent, osquery and Fleet Desktop, all under /opt/orbit.
+    public static let fleetTitle = "Fleet"
+
     private static func identify(_ p: ProcessSnapshot, ports: [UInt16], context: ClassifyContext) -> Identified {
+        if let path = p.executablePath, path.hasPrefix("/opt/orbit/") {
+            let part = path.contains("/osqueryd") ? "osquery · coleta de dados" : path.contains("Fleet Desktop") ? "Fleet Desktop · ícone na barra" : "orbit · agente"
+            return Identified(kind: .system, title: fleetTitle, subtitle: part)
+        }
         let command = p.arguments.joined(separator: " ")
         let exeName = (p.executablePath.map { ($0 as NSString).lastPathComponent }) ?? ""
         let argv0 = p.arguments.first.map { ($0 as NSString).lastPathComponent } ?? ""

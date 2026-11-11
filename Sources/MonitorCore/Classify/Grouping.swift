@@ -108,6 +108,7 @@ public enum Grouping {
             if let plugin = id.plugin { return "plugin:\(plugin)" }
             switch id.kind {
             case .claudeSession: return "kind:\(id.kind.rawValue)"
+            case .system where id.title == Classifier.fleetTitle: return "kind:system:\(id.title)"
             case .mcpServer: return "kind:\(id.kind.rawValue):\(id.title)"
             case .devServer: return "dev:\(id.project ?? "pid\(row.id)")"
             default: return "pid:\(row.id)"

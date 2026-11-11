@@ -36,3 +36,16 @@ import Testing
     #expect(group?.rows.count == 3)
     #expect(group?.title == "claude-mem")
 }
+
+@Test func fleetProcessesGroupTogetherAndCannotBeClosed() {
+    let snaps = [
+        ProcessSnapshot.fixture(pid: 20, name: "orbit", uid: 0, executablePath: "/opt/orbit/bin/orbit/orbit"),
+        ProcessSnapshot.fixture(pid: 21, name: "osqueryd", ppid: 20, uid: 0, executablePath: "/opt/orbit/bin/osqueryd/macos-app/stable/osquery.app/Contents/MacOS/osqueryd"),
+        ProcessSnapshot.fixture(pid: 22, name: "fleet-desktop", executablePath: "/opt/orbit/bin/desktop/macos/stable/Fleet Desktop.app/Contents/MacOS/fleet-desktop"),
+    ]
+    let rows = snaps.map { ProcessRow(snapshot: $0, identified: Classifier.classify($0, ports: []), cpuPercent: 0, ports: []) }
+    let groups = Grouping.group(rows, mode: .byApp)
+    #expect(groups.count == 1)
+    #expect(groups.first?.title == "Fleet")
+    guard let g = groups.first, case .notAllowed = TerminationPlanner.plan(g, all: snaps, mode: .normal, myUid: 501) else { Issue.record("expected notAllowed"); return }
+}

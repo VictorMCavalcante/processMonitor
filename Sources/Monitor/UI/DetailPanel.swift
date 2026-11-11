@@ -216,7 +216,7 @@ struct DetailPanel: View {
         case .appProcess: g.rows.count > 1 ? "App com \(g.rows.count) processos" : "App"
         case .shell: "Terminal"
         case .database: "Banco de dados"
-        case .system: "Processo do sistema"
+        case .system: r.identified.title == Classifier.fleetTitle ? "Gerenciamento da empresa: inventário e políticas de segurança (fleetdm)" : "Processo do sistema"
         case .other: r.snapshot.arguments.joined(separator: " ").isEmpty ? r.snapshot.name : r.snapshot.arguments.joined(separator: " ")
         }
     }
