@@ -15,7 +15,10 @@ enum TerminalFocus {
         }
         for pid in anchors {
             let app = ancestors(pid, byPid).lazy.compactMap { NSRunningApplication(processIdentifier: $0) }.first { $0.activationPolicy == .regular }
-            if let app { app.activate(); return }
+            guard let app else { continue }
+            // A reopen (like clicking the Dock icon) also restores minimized windows; activate() alone doesn't.
+            if let url = app.bundleURL { NSWorkspace.shared.openApplication(at: url, configuration: NSWorkspace.OpenConfiguration()) } else { app.activate() }
+            return
         }
     }
 
