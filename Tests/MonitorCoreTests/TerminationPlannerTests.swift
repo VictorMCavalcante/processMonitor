@@ -90,7 +90,7 @@ import Testing
     {"type":"ai-title","aiTitle":"Planejamento de navegador"}
     {"type":"custom-title","customTitle":"Navegador"}
     """
-    #expect(ClaudeSessionTitle.title(inTranscript: text) == "Navegador")
-    #expect(ClaudeSessionTitle.title(inTranscript: #"{"type":"ai-title","aiTitle":"X"}"#) == "X")
-    #expect(ClaudeSessionTitle.title(inTranscript: "{}") == nil)
+    #expect(ClaudeSessionTitle.parse(text).title == "Navegador")
+    #expect(ClaudeSessionTitle.parse(#"{"type":"ai-title","aiTitle":"X"}"# + "\n" + #"{"type":"last-prompt","lastPrompt":"a\nb"}"#) == ClaudeSessionInfo(title: "X", lastPrompt: "a b"))
+    #expect(ClaudeSessionTitle.parse("{}") == ClaudeSessionInfo())
 }

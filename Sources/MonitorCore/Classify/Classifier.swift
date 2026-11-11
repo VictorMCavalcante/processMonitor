@@ -156,8 +156,11 @@ public enum Classifier {
             return Identified(kind: .appProcess, title: title, subtitle: p.name == title ? nil : p.name, project: nil, appBundlePath: app)
         }
         if argv0 == "claude" || p.name == "claude" || exeName == "claude" {
-            let subtitle = [project, p.state == .stopped ? "suspensa" : nil].compactMap { $0 }.joined(separator: " · ")
-            return Identified(kind: .claudeSession, title: "Claude Code", subtitle: subtitle.isEmpty ? nil : subtitle, project: project)
+            // SDK-driven sessions (plugins, agents) talk stream-json and run from throwaway folders.
+            let automated = p.arguments.contains("stream-json") || p.arguments.contains("--print") || p.arguments.contains("-p")
+            let owner = automated ? nil : project
+            let subtitle = [automated ? "automática" : owner, p.state == .stopped ? "suspensa" : nil].compactMap { $0 }.joined(separator: " · ")
+            return Identified(kind: .claudeSession, title: "Claude Code", subtitle: subtitle.isEmpty ? nil : subtitle, project: owner)
         }
         if p.arguments.contains(where: { $0.hasSuffix("mcp") || $0.contains("-mcp") || $0 == "mcp" }) {
             return Identified(kind: .mcpServer, title: mcpTitle(p.arguments), subtitle: project, project: project)
@@ -210,7 +213,7 @@ public enum Classifier {
 }
 
 extension String {
-    var nilIfEmpty: String? { isEmpty ? nil : self }
+    public var nilIfEmpty: String? { isEmpty ? nil : self }
 }
 
 public final class ProjectResolver: @unchecked Sendable {

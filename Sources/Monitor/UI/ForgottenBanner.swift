@@ -18,7 +18,7 @@ struct ForgottenBanner: View {
                 .buttonStyle(PillButton(color: Theme.bad))
                 .disabled(selected.isEmpty)
             }
-            FlowChips(suspects: store.suspects, titles: store.sessionTitles, now: store.now, unchecked: $unchecked)
+            FlowChips(suspects: store.suspects, titles: Dictionary(store.suspects.compactMap { s in store.sessionLabel(s.row).map { (s.id, $0) } }, uniquingKeysWith: { a, _ in a }), now: store.now, unchecked: $unchecked)
         }
         .font(.system(size: 12))
         .padding(10)

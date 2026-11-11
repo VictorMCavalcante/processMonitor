@@ -59,7 +59,7 @@ final class MonitorStore {
     @ObservationIgnored private var loop: Task<Void, Never>?
     @ObservationIgnored private var stoppedSince: [String: Date] = [:]
     @ObservationIgnored private var titleCheckedAt: [Int32: Date] = [:]
-    var sessionTitles: [Int32: String] = [:]
+    var sessions: [Int32: ClaudeSessionInfo] = [:]
     @ObservationIgnored var onCycle: (@MainActor (MonitorStore) -> Void)?
     var battery: BatteryReading?
     var minutesLeft: Int?
@@ -207,6 +207,12 @@ final class MonitorStore {
         let sorted = entries.sorted { priority($0) != priority($1) ? priority($0) < priority($1) : $0.port < $1.port }
         var seen: Set<UInt16> = []
         return sorted.compactMap { seen.insert($0.port).inserted ? $0.port : nil }.prefix(6).map { $0 }
+    }
+
+    /// What a Claude session is about: its title, else the last thing asked in it.
+    func sessionLabel(_ r: ProcessRow) -> String? {
+        guard r.identified.kind == .claudeSession else { return nil }
+        return sessions[r.id]?.title ?? sessions[r.id]?.lastPrompt ?? (r.identified.subtitle?.hasPrefix("automática") == true ? "Sessão automática (SDK)" : nil)
     }
 
     func sessionCost(_ snap: ProcessSnapshot) -> SessionCost {
@@ -361,9 +367,9 @@ final class MonitorStore {
         let scanPorts = Date().timeIntervalSince(lastPortScan) >= 15
         let visible = windowVisible
         let previous = rows
-        let titlePids = previous.filter { $0.identified.kind == .claudeSession && sessionTitles[$0.id] == nil && Date().timeIntervalSince(titleCheckedAt[$0.id] ?? .distantPast) >= 60 }.map(\.id)
+        let titlePids = previous.filter { $0.identified.kind == .claudeSession && Date().timeIntervalSince(titleCheckedAt[$0.id] ?? .distantPast) >= 60 }.map(\.id)
         for pid in titlePids { titleCheckedAt[pid] = Date() }
-        let (snaps, newSockets, gpuReading, batteryReading, blockers, titles) = await Task.detached(priority: .utility) { () -> ([ProcessSnapshot], [ListeningSocket]?, GPUReading?, BatteryReading?, [SleepBlocker]?, [Int32: String]) in
+        let (snaps, newSockets, gpuReading, batteryReading, blockers, titles) = await Task.detached(priority: .utility) { () -> ([ProcessSnapshot], [ListeningSocket]?, GPUReading?, BatteryReading?, [SleepBlocker]?, [Int32: ClaudeSessionInfo]) in
             let snaps = ProcessSampler().sample()
             let blockers = visible ? Self.arrange(SleepBlockers.build(SleepBlockers.read(now: Date()), rows: previous, all: snaps, now: Date()), rows: previous) : nil
             let titles = Dictionary(uniqueKeysWithValues: titlePids.compactMap { pid in ClaudeSessionTitle.lookup(pid: pid).map { (pid, $0) } })
@@ -393,8 +399,8 @@ final class MonitorStore {
         allSnapshots = snaps
         let livePids = Set(live.map(\.id))
         titleCheckedAt = titleCheckedAt.filter { livePids.contains($0.key) }
-        let keptTitles = sessionTitles.filter { livePids.contains($0.key) }.merging(titles) { _, new in new }
-        if keptTitles != sessionTitles { sessionTitles = keptTitles }
+        let kept = sessions.filter { livePids.contains($0.key) }.merging(titles) { _, new in new }
+        if kept != sessions { sessions = kept }
         let context = ClassifyContext(dockerRunning: Classifier.dockerRunning(in: snaps))
         dockerRunning = context.dockerRunning
         rows = live.map { snap in

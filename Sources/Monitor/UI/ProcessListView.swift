@@ -61,7 +61,8 @@ struct ProcessListView: View {
                     Image(systemName: expanded.contains(g.id) ? "chevron.down" : "chevron.right").font(.system(size: 9)).foregroundStyle(Theme.muted)
                 }
                 Text(g.title).fontWeight(.semibold).lineLimit(1)
-                if let s = g.subtitle { Text(s).foregroundStyle(Theme.muted).font(.system(size: 11)).lineLimit(1) }
+                let label = g.kind == .claudeSession && g.rows.count == 1 ? store.sessionLabel(g.rows[0]) : nil
+                if let s = [label, g.subtitle].compactMap({ $0 }).joined(separator: " · ").nilIfEmpty { Text(s).foregroundStyle(Theme.muted).font(.system(size: 11)).lineLimit(1) }
                 if stopped && g.kind == .claudeSession { Tag(text: g.rows.filter { $0.snapshot.state == .stopped }.count == 1 ? "1 suspensa" : "suspensas", color: Theme.bad) }
                 else if isSuspect { Tag(text: "esquecido", color: Theme.warn) }
                 if isRunaway { Tag(text: "descontrolado", color: Theme.bad) }
@@ -87,9 +88,9 @@ struct ProcessListView: View {
         return columns(
             icon: AnyView(Color.clear.frame(width: 20, height: 1)),
             name: AnyView(HStack(spacing: 6) {
-                let title = store.sessionTitles[r.id]
+                let title = store.sessionLabel(r)
                 Text(title ?? r.snapshot.name).lineLimit(1)
-                Text(([title == nil ? nil : r.snapshot.name, r.ports.isEmpty ? nil : r.ports.map { ":\($0)" }.joined(separator: " ")] + ["PID \(r.id)"]).compactMap { $0 }.joined(separator: " · "))
+                Text(([title == nil ? nil : r.identified.subtitle ?? r.snapshot.name, r.ports.isEmpty ? nil : r.ports.map { ":\($0)" }.joined(separator: " ")] + ["PID \(r.id)"]).compactMap { $0 }.joined(separator: " · "))
                     .foregroundStyle(Theme.muted).font(.system(size: 11))
                 if r.snapshot.state == .stopped { Tag(text: "suspenso", color: Theme.bad) }
             }.padding(.leading, 18)),

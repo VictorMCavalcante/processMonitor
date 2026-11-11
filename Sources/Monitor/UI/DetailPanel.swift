@@ -39,7 +39,7 @@ struct DetailPanel: View {
         HStack(spacing: 10) {
             AppIcon(title: t.group.title, appPath: r.identified.appBundlePath, size: 32)
             VStack(alignment: .leading, spacing: 2) {
-                Text(isSingle && row != nil ? store.sessionTitles[r.id] ?? r.snapshot.name : t.group.title).font(.system(size: 13, weight: .semibold)).lineLimit(2)
+                Text(isSingle ? store.sessionLabel(r) ?? (row != nil ? r.snapshot.name : t.group.title) : t.group.title).font(.system(size: 13, weight: .semibold)).lineLimit(2)
                 Text(description(t.group, r)).foregroundStyle(Theme.muted).font(.system(size: 11.5)).lineLimit(2)
             }
         }
@@ -56,6 +56,7 @@ struct DetailPanel: View {
                 .padding(.top, 12)
         }
         Grid(alignment: .topLeading, horizontalSpacing: 10, verticalSpacing: 7) {
+            if isSingle, let info = store.sessions[r.id], let prompt = info.lastPrompt, info.title != nil { field("Último pedido", "“\(prompt.count > 240 ? prompt.prefix(240) + "…" : prompt)”") }
             if let p = r.identified.project { field("Projeto", p) }
             if let cwd = r.snapshot.cwd { field("Pasta", abbreviate(cwd), muted: true) }
             if !r.ports.isEmpty { field("Porta", r.ports.map(String.init).joined(separator: ", ")) }
