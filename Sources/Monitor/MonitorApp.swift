@@ -64,10 +64,16 @@ private struct WindowRoot: View {
         Group {
             if store.windowVisible { MainWindow(store: store) } else { Theme.bg }
         }
-        .onAppear { store.windowVisible = true }
+        .onAppear {
+            store.windowVisible = true
+            // Menu bar app (LSUIElement): show in the Dock / Cmd+Tab only while the window is open.
+            NSApp.setActivationPolicy(.regular)
+            NSApp.activate(ignoringOtherApps: true)
+        }
         .onReceive(NotificationCenter.default.publisher(for: NSWindow.willCloseNotification)) { note in
             guard let window = note.object as? NSWindow, window.identifier?.rawValue.hasPrefix("main") == true else { return }
             store.windowVisible = false
+            NSApp.setActivationPolicy(.accessory)
         }
     }
 }
