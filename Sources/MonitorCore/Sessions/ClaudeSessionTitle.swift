@@ -39,6 +39,16 @@ public enum ClaudeSessionTitle {
         return nil
     }
 
+    /// Plugin that launched an SDK session, from `…/plugins/cache/<org>/<plugin>/…` in its own or its parent's argv.
+    public static func plugin(in arguments: [String]) -> String? {
+        for arg in arguments {
+            guard let range = arg.range(of: "/plugins/cache/") else { continue }
+            let parts = arg[range.upperBound...].split(separator: "/")
+            if parts.count >= 2 { return String(parts[1]) }
+        }
+        return nil
+    }
+
     static let tailBytes: UInt64 = 512 * 1024
 
     static func parse(_ text: String) -> ClaudeSessionInfo {

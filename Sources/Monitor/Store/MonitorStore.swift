@@ -212,7 +212,11 @@ final class MonitorStore {
     /// What a Claude session is about: its title, else the last thing asked in it.
     func sessionLabel(_ r: ProcessRow) -> String? {
         guard r.identified.kind == .claudeSession else { return nil }
-        return sessions[r.id]?.title ?? sessions[r.id]?.lastPrompt ?? (r.identified.subtitle?.hasPrefix("automática") == true ? "Sessão automática (SDK)" : nil)
+        if let info = sessions[r.id], let label = info.title ?? info.lastPrompt { return label }
+        guard r.identified.subtitle?.hasPrefix("automática") == true else { return nil }
+        let parent = allSnapshots.first { $0.id == r.snapshot.ppid }
+        let owner = ClaudeSessionTitle.plugin(in: r.snapshot.arguments) ?? parent.flatMap { ClaudeSessionTitle.plugin(in: $0.arguments) } ?? parent?.name
+        return owner.map { "Automática · \($0)" } ?? "Sessão automática (SDK)"
     }
 
     func sessionCost(_ snap: ProcessSnapshot) -> SessionCost {

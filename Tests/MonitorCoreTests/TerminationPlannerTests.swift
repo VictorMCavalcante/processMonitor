@@ -93,4 +93,7 @@ import Testing
     #expect(ClaudeSessionTitle.parse(text).title == "Navegador")
     #expect(ClaudeSessionTitle.parse(#"{"type":"ai-title","aiTitle":"X"}"# + "\n" + #"{"type":"last-prompt","lastPrompt":"a\nb"}"#) == ClaudeSessionInfo(title: "X", lastPrompt: "a b"))
     #expect(ClaudeSessionTitle.parse("{}") == ClaudeSessionInfo())
+    #expect(ClaudeSessionTitle.plugin(in: ["bun", "/Users/a/.claude/plugins/cache/thedotmack/claude-mem/15.13.0/scripts/w.cjs"]) == "claude-mem")
+    #expect(ClaudeSessionTitle.plugin(in: ["--plugin-dir=/x/plugins/cache/org/foo/1.0"]) == "foo")
+    #expect(ClaudeSessionTitle.plugin(in: ["claude", "-p"]) == nil)
 }
