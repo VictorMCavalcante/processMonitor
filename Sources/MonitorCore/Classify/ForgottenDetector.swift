@@ -3,6 +3,7 @@ import Foundation
 public enum SuspectReason: Sendable, Equatable {
     case idleDevServer(days: Int)
     case suspendedSession(days: Int)
+    case idleSession(hours: Int)
     case orphanMcp
 }
 
@@ -20,6 +21,7 @@ public struct Suspect: Sendable, Identifiable, Equatable {
         switch reason {
         case .idleDevServer(let days): "Aberto há \(Self.days(days)) e quase sem uso de CPU. Provavelmente esquecido."
         case .suspendedSession(let days): "Sessão suspensa (Ctrl+Z) há \(Self.days(days))."
+        case .idleSession(let hours): "Sessão esperando você há \(hours >= 48 ? Self.days(hours / 24) : "\(hours) h"), sem nenhum pedido novo."
         case .orphanMcp: "Servidor MCP sem a sessão que o abriu."
         }
     }
@@ -31,8 +33,9 @@ public enum ForgottenDetector {
     public static let idleAge: TimeInterval = 24 * 3600
     public static let idleCpuFraction = 0.005
     public static let suspendedMinimum: TimeInterval = 30 * 60
+    public static let idleSessionMinimum: TimeInterval = 4 * 3600
 
-    public static func detect(_ rows: [ProcessRow], allPids: Set<Int32>, now: Date, ignore: IgnoreList, stoppedSince: [Int32: Date] = [:]) -> [Suspect] {
+    public static func detect(_ rows: [ProcessRow], allPids: Set<Int32>, now: Date, ignore: IgnoreList, stoppedSince: [Int32: Date] = [:], idleSince: [Int32: Date] = [:]) -> [Suspect] {
         rows.compactMap { row -> Suspect? in
             guard !ignore.contains(.of(row)) else { return nil }
             let age = now.timeIntervalSince(row.snapshot.startTime)
@@ -42,6 +45,9 @@ public enum ForgottenDetector {
                 guard age >= idleAge else { return nil }
                 let lifetimeCpu = Double(row.snapshot.cpuTimeNs) / 1e9 / age
                 return lifetimeCpu < idleCpuFraction ? Suspect(row: row, reason: .idleDevServer(days: days)) : nil
+            case .claudeSession where row.snapshot.state != .stopped:
+                guard !Classifier.isAutomatedClaude(row.snapshot), let since = idleSince[row.id], now.timeIntervalSince(since) >= idleSessionMinimum else { return nil }
+                return Suspect(row: row, reason: .idleSession(hours: Int(now.timeIntervalSince(since) / 3600)))
             case .claudeSession:
                 guard row.snapshot.state == .stopped, let since = stoppedSince[row.id], now.timeIntervalSince(since) >= suspendedMinimum else { return nil }
                 return Suspect(row: row, reason: .suspendedSession(days: max(1, Int(now.timeIntervalSince(since) / 86_400))))

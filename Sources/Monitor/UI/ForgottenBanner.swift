@@ -24,7 +24,7 @@ struct ForgottenBanner: View {
         .padding(10)
         .background(RoundedRectangle(cornerRadius: 10).fill(LinearGradient(colors: [Theme.warn.opacity(0.14), Theme.warn.opacity(0.04)], startPoint: .leading, endPoint: .trailing)))
         .overlay(RoundedRectangle(cornerRadius: 10).stroke(Theme.warn.opacity(0.35)))
-        .onAppear { unchecked = Set(store.suspects.filter { if case .suspendedSession = $0.reason { true } else { false } }.map(\.id)) }
+        .onAppear { unchecked = Set(store.suspects.filter { switch $0.reason { case .suspendedSession, .idleSession: true; default: false } }.map(\.id)) }
     }
 }
 

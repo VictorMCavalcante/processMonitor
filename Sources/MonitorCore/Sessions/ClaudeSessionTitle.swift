@@ -10,33 +10,62 @@ public struct ClaudeSessionInfo: Sendable, Equatable {
     }
 }
 
+public struct ClaudeSessionStatus: Sendable, Equatable {
+    /// `busy` while Claude works, `idle` while it waits for the user.
+    public var state: String
+    public var since: Date
+    public var sessionId: String?
+
+    public init(state: String, since: Date, sessionId: String? = nil) {
+        self.state = state
+        self.since = since
+        self.sessionId = sessionId
+    }
+
+    public var isIdle: Bool { state == "idle" }
+}
+
 /// Claude Code writes `<configDir>/sessions/<pid>.json` (sessionId + cwd) and the transcript
 /// `<configDir>/projects/<cwd with non-alnum as ->/<sessionId>.jsonl`, which carries `ai-title`,
 /// `custom-title` (when the user renamed it) and `last-prompt` lines, re-appended as the session goes.
 public enum ClaudeSessionTitle {
-    public static func lookup(pid: Int32, home: URL = FileManager.default.homeDirectoryForCurrentUser) -> ClaudeSessionInfo? {
-        let fm = FileManager.default
-        let configDirs = ((try? fm.contentsOfDirectory(atPath: home.path)) ?? []).filter { $0.hasPrefix(".claude") }
-        for dir in configDirs {
+    /// `<configDir>/sessions/<pid>.json` across every `~/.claude*` config dir.
+    static func sessionFile(pid: Int32, home: URL) -> (base: URL, info: [String: Any])? {
+        let dirs = ((try? FileManager.default.contentsOfDirectory(atPath: home.path)) ?? []).filter { $0.hasPrefix(".claude") }
+        for dir in dirs {
             let base = home.appendingPathComponent(dir)
-            guard let data = try? Data(contentsOf: base.appendingPathComponent("sessions/\(pid).json")),
-                  let info = try? JSONSerialization.jsonObject(with: data) as? [String: Any],
-                  let id = info["sessionId"] as? String, let cwd = info["cwd"] as? String else { continue }
-            let folder = String(cwd.map { $0.isLetter || $0.isNumber ? $0 : "-" })
-            let transcript = base.appendingPathComponent("projects/\(folder)/\(id).jsonl")
-            guard let handle = try? FileHandle(forReadingFrom: transcript) else { return nil }
-            defer { try? handle.close() }
-            // Transcripts reach tens of MB; titles/prompts are re-appended often, so the tail usually has them.
-            let size = (try? handle.seekToEnd()) ?? 0
-            try? handle.seek(toOffset: size > tailBytes ? size - tailBytes : 0)
-            var result = parse(String(decoding: (try? handle.readToEnd()) ?? Data(), as: UTF8.self))
-            if result.title == nil, size > tailBytes {
-                try? handle.seek(toOffset: 0)
-                result.title = parse(String(decoding: (try? handle.readToEnd()) ?? Data(), as: UTF8.self)).title
-            }
-            return result
+            if let data = try? Data(contentsOf: base.appendingPathComponent("sessions/\(pid).json")),
+               let info = try? JSONSerialization.jsonObject(with: data) as? [String: Any] { return (base, info) }
         }
         return nil
+    }
+
+    public static func status(pid: Int32, home: URL = FileManager.default.homeDirectoryForCurrentUser) -> ClaudeSessionStatus? {
+        guard let info = sessionFile(pid: pid, home: home)?.info else { return nil }
+        return status(from: info)
+    }
+
+    static func status(from info: [String: Any]) -> ClaudeSessionStatus? {
+        guard let state = info["status"] as? String, let ms = (info["statusUpdatedAt"] ?? info["updatedAt"]) as? Double else { return nil }
+        return ClaudeSessionStatus(state: state, since: Date(timeIntervalSince1970: ms / 1000), sessionId: info["sessionId"] as? String)
+    }
+
+    public static func lookup(pid: Int32, home: URL = FileManager.default.homeDirectoryForCurrentUser) -> ClaudeSessionInfo? {
+        guard let (base, info) = sessionFile(pid: pid, home: home),
+              let id = info["sessionId"] as? String, let cwd = info["cwd"] as? String else { return nil }
+        let folder = String(cwd.map { $0.isLetter || $0.isNumber ? $0 : "-" })
+        let transcript = base.appendingPathComponent("projects/\(folder)/\(id).jsonl")
+        guard let handle = try? FileHandle(forReadingFrom: transcript) else { return nil }
+        defer { try? handle.close() }
+        // Transcripts reach tens of MB; titles/prompts are re-appended often, so the tail usually has them.
+        let size = (try? handle.seekToEnd()) ?? 0
+        try? handle.seek(toOffset: size > tailBytes ? size - tailBytes : 0)
+        var result = parse(String(decoding: (try? handle.readToEnd()) ?? Data(), as: UTF8.self))
+        if result.title == nil, size > tailBytes {
+            try? handle.seek(toOffset: 0)
+            result.title = parse(String(decoding: (try? handle.readToEnd()) ?? Data(), as: UTF8.self)).title
+        }
+        return result
     }
 
     /// Plugin that launched an SDK session, from `…/plugins/cache/<org>/<plugin>/…` in its own or its parent's argv.

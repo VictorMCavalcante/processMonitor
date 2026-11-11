@@ -22,3 +22,17 @@ import Testing
     let rows = [ProcessRow.fixture(pid: 1, bytes: 10), .fixture(pid: 2, bytes: 30)]
     #expect(Grouping.group(rows, mode: .flat).map(\.footprintBytes) == [30, 10])
 }
+
+@Test func pluginProcessesGroupUnderThePluginThatLaunchedThem() {
+    let worker = ProcessSnapshot.fixture(pid: 10, name: "bun", arguments: ["bun", "/u/.claude/plugins/cache/org/claude-mem/1.0/worker.cjs"])
+    let uv = ProcessSnapshot.fixture(pid: 11, name: "uv", arguments: ["uv", "chroma-mcp"], ppid: 10)
+    let session = ProcessSnapshot.fixture(pid: 12, name: "claude", arguments: ["claude", "--output-format", "stream-json"], ppid: 10)
+    let other = ProcessSnapshot.fixture(pid: 13, name: "node", arguments: ["node", "x.js"])
+    let snaps = [worker, uv, session, other]
+    let context = ClassifyContext(dockerRunning: false, plugins: Classifier.plugins(in: snaps))
+    #expect(context.plugins == [10: "claude-mem", 11: "claude-mem", 12: "claude-mem"])
+    let rows = snaps.map { ProcessRow(snapshot: $0, identified: Classifier.classify($0, ports: [], context: context), cpuPercent: 0, ports: []) }
+    let group = Grouping.group(rows, mode: .byApp).first { $0.id == "plugin:claude-mem" }
+    #expect(group?.rows.count == 3)
+    #expect(group?.title == "claude-mem")
+}

@@ -60,6 +60,7 @@ final class MonitorStore {
     @ObservationIgnored private var stoppedSince: [String: Date] = [:]
     @ObservationIgnored private var titleCheckedAt: [Int32: Date] = [:]
     var sessions: [Int32: ClaudeSessionInfo] = [:]
+    var sessionStatus: [Int32: ClaudeSessionStatus] = [:]
     @ObservationIgnored var onCycle: (@MainActor (MonitorStore) -> Void)?
     var battery: BatteryReading?
     var minutesLeft: Int?
@@ -213,7 +214,7 @@ final class MonitorStore {
     func sessionLabel(_ r: ProcessRow) -> String? {
         guard r.identified.kind == .claudeSession else { return nil }
         if let info = sessions[r.id], let label = info.title ?? info.lastPrompt { return label }
-        guard r.identified.subtitle?.hasPrefix("automática") == true else { return nil }
+        guard Classifier.isAutomatedClaude(r.snapshot) else { return nil }
         let parent = allSnapshots.first { $0.id == r.snapshot.ppid }
         let owner = ClaudeSessionTitle.plugin(in: r.snapshot.arguments) ?? parent.flatMap { ClaudeSessionTitle.plugin(in: $0.arguments) } ?? parent?.name
         return owner.map { "Automática · \($0)" } ?? "Sessão automática (SDK)"
@@ -373,11 +374,13 @@ final class MonitorStore {
         let previous = rows
         let titlePids = previous.filter { $0.identified.kind == .claudeSession && Date().timeIntervalSince(titleCheckedAt[$0.id] ?? .distantPast) >= 60 }.map(\.id)
         for pid in titlePids { titleCheckedAt[pid] = Date() }
-        let (snaps, newSockets, gpuReading, batteryReading, blockers, titles) = await Task.detached(priority: .utility) { () -> ([ProcessSnapshot], [ListeningSocket]?, GPUReading?, BatteryReading?, [SleepBlocker]?, [Int32: ClaudeSessionInfo]) in
+        let sessionPids = previous.filter { $0.identified.kind == .claudeSession }.map(\.id)
+        let (snaps, newSockets, gpuReading, batteryReading, blockers, titles, statuses) = await Task.detached(priority: .utility) { () -> ([ProcessSnapshot], [ListeningSocket]?, GPUReading?, BatteryReading?, [SleepBlocker]?, [Int32: ClaudeSessionInfo], [Int32: ClaudeSessionStatus]) in
             let snaps = ProcessSampler().sample()
             let blockers = visible ? Self.arrange(SleepBlockers.build(SleepBlockers.read(now: Date()), rows: previous, all: snaps, now: Date()), rows: previous) : nil
             let titles = Dictionary(uniqueKeysWithValues: titlePids.compactMap { pid in ClaudeSessionTitle.lookup(pid: pid).map { (pid, $0) } })
-            return (snaps, scanPorts ? PortScanner.scanSockets() : nil, GPUSampler.read(), BatterySampler.read(), blockers, titles)
+            let statuses = Dictionary(uniqueKeysWithValues: sessionPids.compactMap { pid in ClaudeSessionTitle.status(pid: pid).map { (pid, $0) } })
+            return (snaps, scanPorts ? PortScanner.scanSockets() : nil, GPUSampler.read(), BatterySampler.read(), blockers, titles, statuses)
         }.value
         if let newSockets {
             sockets = newSockets
@@ -405,7 +408,8 @@ final class MonitorStore {
         titleCheckedAt = titleCheckedAt.filter { livePids.contains($0.key) }
         let kept = sessions.filter { livePids.contains($0.key) }.merging(titles) { _, new in new }
         if kept != sessions { sessions = kept }
-        let context = ClassifyContext(dockerRunning: Classifier.dockerRunning(in: snaps))
+        if statuses != sessionStatus { sessionStatus = statuses }
+        let context = ClassifyContext(dockerRunning: Classifier.dockerRunning(in: snaps), plugins: Classifier.plugins(in: snaps))
         dockerRunning = context.dockerRunning
         rows = live.map { snap in
             let p = ports[snap.id] ?? []
@@ -436,7 +440,8 @@ final class MonitorStore {
             stoppedByPid[snap.id] = since
         }
         stoppedSince = nextStopped
-        suspects = ForgottenDetector.detect(rows, allPids: Set(snaps.map(\.id)), now: at, ignore: ignore, stoppedSince: stoppedByPid)
+        suspects = ForgottenDetector.detect(rows, allPids: Set(snaps.map(\.id)), now: at, ignore: ignore, stoppedSince: stoppedByPid,
+                                           idleSince: sessionStatus.filter { $0.value.isIdle }.mapValues(\.since))
         runaways = runawayTracker.update(rows, at: at, myUid: getuid(), ignore: ignore, onBattery: onBattery)
         let appGroups = Grouping.group(rows, mode: .byApp)
         trackGrowth(appGroups, at: at)

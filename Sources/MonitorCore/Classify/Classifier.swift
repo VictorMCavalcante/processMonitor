@@ -17,6 +17,8 @@ public struct Identified: Sendable, Equatable {
     public var subtitle: String?
     public var project: String?
     public var appBundlePath: String?
+    /// Claude Code plugin that (directly or through an ancestor) launched this process.
+    public var plugin: String?
 
     public init(kind: ProcessKind, title: String, subtitle: String? = nil, project: String? = nil, appBundlePath: String? = nil) {
         self.kind = kind
@@ -29,9 +31,11 @@ public struct Identified: Sendable, Equatable {
 
 public struct ClassifyContext: Sendable, Equatable {
     public var dockerRunning: Bool
+    public var plugins: [Int32: String]
 
-    public init(dockerRunning: Bool) {
+    public init(dockerRunning: Bool, plugins: [Int32: String] = [:]) {
         self.dockerRunning = dockerRunning
+        self.plugins = plugins
     }
 
     public static let empty = ClassifyContext(dockerRunning: false)
@@ -40,6 +44,26 @@ public struct ClassifyContext: Sendable, Equatable {
 public enum Classifier {
     public static let dockerAppPath = "/Applications/Docker.app"
     private static let virtualMachineMarker = "com.apple.Virtualization.VirtualMachine"
+
+    /// pid → plugin name, for processes whose argv (or an ancestor's) points into `plugins/cache/`.
+    public static func plugins(in snaps: [ProcessSnapshot]) -> [Int32: String] {
+        let byPid = Dictionary(snaps.map { ($0.id, $0) }, uniquingKeysWith: { a, _ in a })
+        var result: [Int32: String] = [:]
+        for snap in snaps {
+            var current: ProcessSnapshot? = snap
+            for _ in 0..<8 {
+                guard let p = current, p.id > 1 else { break }
+                if let name = ClaudeSessionTitle.plugin(in: p.arguments) { result[snap.id] = name; break }
+                current = byPid[p.ppid]
+            }
+        }
+        return result
+    }
+
+    /// SDK-driven Claude sessions (plugins, agents) talk stream-json / --print and run from throwaway folders.
+    public static func isAutomatedClaude(_ p: ProcessSnapshot) -> Bool {
+        p.arguments.contains("stream-json") || p.arguments.contains("--print") || p.arguments.contains("-p")
+    }
 
     public static func dockerRunning(in snaps: [ProcessSnapshot]) -> Bool {
         snaps.contains { $0.executablePath?.hasPrefix(dockerAppPath + "/") == true }
@@ -123,6 +147,12 @@ public enum Classifier {
     private static let scriptExtensions: Set<String> = ["py", "js", "mjs", "cjs", "ts", "rb", "pl", "php"]
 
     public static func classify(_ p: ProcessSnapshot, ports: [UInt16], context: ClassifyContext = .empty) -> Identified {
+        var id = identify(p, ports: ports, context: context)
+        if id.appBundlePath == nil, id.kind != .system { id.plugin = context.plugins[p.id] }
+        return id
+    }
+
+    private static func identify(_ p: ProcessSnapshot, ports: [UInt16], context: ClassifyContext) -> Identified {
         let command = p.arguments.joined(separator: " ")
         let exeName = (p.executablePath.map { ($0 as NSString).lastPathComponent }) ?? ""
         let argv0 = p.arguments.first.map { ($0 as NSString).lastPathComponent } ?? ""
@@ -156,8 +186,7 @@ public enum Classifier {
             return Identified(kind: .appProcess, title: title, subtitle: p.name == title ? nil : p.name, project: nil, appBundlePath: app)
         }
         if argv0 == "claude" || p.name == "claude" || exeName == "claude" {
-            // SDK-driven sessions (plugins, agents) talk stream-json and run from throwaway folders.
-            let automated = p.arguments.contains("stream-json") || p.arguments.contains("--print") || p.arguments.contains("-p")
+            let automated = isAutomatedClaude(p)
             let owner = automated ? nil : project
             let subtitle = [automated ? "automática" : owner, p.state == .stopped ? "suspensa" : nil].compactMap { $0 }.joined(separator: " · ")
             return Identified(kind: .claudeSession, title: "Claude Code", subtitle: subtitle.isEmpty ? nil : subtitle, project: owner)

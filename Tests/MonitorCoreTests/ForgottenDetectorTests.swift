@@ -47,3 +47,14 @@ import Testing
 @Test func ignoreKeySurvivesRestart() {
     #expect(IgnoreKey.of(.fixture(pid: 10, kind: .devServer, project: "systemwra")) == IgnoreKey.of(.fixture(pid: 99, kind: .devServer, project: "systemwra")))
 }
+
+@Test func idleClaudeSessionIsForgottenAfterFourHoursUnlessAutomated() {
+    let now = Date(timeIntervalSince1970: 1_000_000)
+    var automated = ProcessRow.fixture(pid: 3, kind: .claudeSession)
+    automated.snapshot.arguments = ["claude", "--output-format", "stream-json"]
+    let rows = [ProcessRow.fixture(pid: 2, kind: .claudeSession), automated, ProcessRow.fixture(pid: 4, kind: .claudeSession)]
+    let idle: [Int32: Date] = [2: now.addingTimeInterval(-5 * 3600), 3: now.addingTimeInterval(-5 * 3600), 4: now.addingTimeInterval(-3600)]
+    let s = ForgottenDetector.detect(rows, allPids: [2, 3, 4], now: now, ignore: IgnoreList(defaults: .ephemeral()), idleSince: idle)
+    #expect(s.map(\.id) == [2])
+    #expect(s.first?.reason == .idleSession(hours: 5))
+}

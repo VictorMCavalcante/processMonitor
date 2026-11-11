@@ -57,6 +57,9 @@ struct DetailPanel: View {
         }
         Grid(alignment: .topLeading, horizontalSpacing: 10, verticalSpacing: 7) {
             if isSingle, let info = store.sessions[r.id], let prompt = info.lastPrompt, info.title != nil { field("Último pedido", "“\(prompt.count > 240 ? prompt.prefix(240) + "…" : prompt)”") }
+            if isSingle, r.snapshot.state != .stopped, let s = store.sessionStatus[r.id] {
+                field("Atividade", s.isIdle ? "Esperando você há \(Format.age(since: s.since, now: store.now))" : s.state == "busy" ? "Trabalhando" : s.state)
+            }
             if let p = r.identified.project { field("Projeto", p) }
             if let cwd = r.snapshot.cwd { field("Pasta", abbreviate(cwd), muted: true) }
             if !r.ports.isEmpty { field("Porta", r.ports.map(String.init).joined(separator: ", ")) }
@@ -105,6 +108,10 @@ struct DetailPanel: View {
                 .buttonStyle(PillButton()).disabled(blocked != nil)
             if case .quitApp = plan {
                 Button { onRestart(t.group) } label: { Text("Reiniciar").frame(maxWidth: .infinity) }
+                    .buttonStyle(PillButton())
+            }
+            if isSingle, r.identified.kind == .claudeSession, !Classifier.isAutomatedClaude(r.snapshot) {
+                Button { TerminalFocus.focus(r, sessionId: store.sessionStatus[r.id]?.sessionId, all: store.allSnapshots) } label: { Text("Ir para o terminal").frame(maxWidth: .infinity) }
                     .buttonStyle(PillButton())
             }
             Button { if let cwd = r.snapshot.cwd { NSWorkspace.shared.open(URL(fileURLWithPath: cwd)) } } label: { Text("Abrir pasta").frame(maxWidth: .infinity) }

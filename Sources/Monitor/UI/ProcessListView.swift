@@ -61,8 +61,9 @@ struct ProcessListView: View {
                     Image(systemName: expanded.contains(g.id) ? "chevron.down" : "chevron.right").font(.system(size: 9)).foregroundStyle(Theme.muted)
                 }
                 Text(g.title).fontWeight(.semibold).lineLimit(1)
-                let label = g.kind == .claudeSession && g.rows.count == 1 ? store.sessionLabel(g.rows[0]) : nil
-                if let s = [label, g.subtitle].compactMap({ $0 }).joined(separator: " · ").nilIfEmpty { Text(s).foregroundStyle(Theme.muted).font(.system(size: 11)).lineLimit(1) }
+                let session = g.kind == .claudeSession && g.rows.count == 1 ? g.rows[0] : nil
+                if let s = [session.flatMap(store.sessionLabel), g.subtitle, session.flatMap(sessionTotal)].compactMap({ $0 }).joined(separator: " · ").nilIfEmpty { Text(s).foregroundStyle(Theme.muted).font(.system(size: 11)).lineLimit(1) }
+                if let session { statusTag(session) }
                 if stopped && g.kind == .claudeSession { Tag(text: g.rows.filter { $0.snapshot.state == .stopped }.count == 1 ? "1 suspensa" : "suspensas", color: Theme.bad) }
                 else if isSuspect { Tag(text: "esquecido", color: Theme.warn) }
                 if isRunaway { Tag(text: "descontrolado", color: Theme.bad) }
@@ -90,9 +91,10 @@ struct ProcessListView: View {
             name: AnyView(HStack(spacing: 6) {
                 let title = store.sessionLabel(r)
                 Text(title ?? r.snapshot.name).lineLimit(1)
-                Text(([title == nil ? nil : r.identified.subtitle ?? r.snapshot.name, r.ports.isEmpty ? nil : r.ports.map { ":\($0)" }.joined(separator: " ")] + ["PID \(r.id)"]).compactMap { $0 }.joined(separator: " · "))
+                Text(([title == nil ? nil : r.identified.subtitle ?? r.snapshot.name, sessionTotal(r), r.ports.isEmpty ? nil : r.ports.map { ":\($0)" }.joined(separator: " ")] + ["PID \(r.id)"]).compactMap { $0 }.joined(separator: " · "))
                     .foregroundStyle(Theme.muted).font(.system(size: 11))
                 if r.snapshot.state == .stopped { Tag(text: "suspenso", color: Theme.bad) }
+                statusTag(r)
             }.padding(.leading, 18)),
             memory: AnyView(Text(Format.bytes(r.snapshot.footprintBytes))),
             cpu: AnyView(Text(Format.cpu(r.cpuPercent, cores: ProcessInfo.processInfo.activeProcessorCount))),
@@ -104,6 +106,21 @@ struct ProcessListView: View {
         .background(selected ? Theme.accent.opacity(0.10) : Theme.row)
         .contentShape(Rectangle())
         .onTapGesture { selection = .process(r.id) }
+    }
+
+    @ViewBuilder
+    private func statusTag(_ r: ProcessRow) -> some View {
+        if r.identified.kind == .claudeSession, r.snapshot.state != .stopped, let s = store.sessionStatus[r.id] {
+            if s.isIdle { Tag(text: "esperando você há \(Format.age(since: s.since, now: store.now))", color: Theme.muted) }
+            else if s.state == "busy" { Tag(text: "trabalhando", color: Theme.ok) }
+        }
+    }
+
+    /// Claude session plus the MCP servers it spawned, when that differs from the process alone.
+    private func sessionTotal(_ r: ProcessRow) -> String? {
+        guard r.identified.kind == .claudeSession else { return nil }
+        let total = store.sessionCost(r.snapshot).totalBytes
+        return total > r.snapshot.footprintBytes ? "total c/ MCPs \(Format.bytes(total))" : nil
     }
 
     private func closeButton(_ g: ProcessGroup) -> some View {

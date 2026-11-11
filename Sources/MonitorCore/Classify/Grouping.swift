@@ -105,6 +105,7 @@ public enum Grouping {
             return key(for: row, mode: .byApp)
         case .byApp:
             if let app = id.appBundlePath { return "app:\(app)" }
+            if let plugin = id.plugin { return "plugin:\(plugin)" }
             switch id.kind {
             case .claudeSession: return "kind:\(id.kind.rawValue)"
             case .mcpServer: return "kind:\(id.kind.rawValue):\(id.title)"
@@ -123,6 +124,10 @@ public enum Grouping {
         }
         if id.hasPrefix("kind:"), first.kind == .claudeSession {
             return ProcessGroup(id: id, title: first.title, subtitle: rows.count == 1 ? first.subtitle : "\(rows.count) sessões", kind: first.kind, rows: rows, sort: sort)
+        }
+        if id.hasPrefix("plugin:") {
+            let kinds = Set(rows.map(\.identified.kind))
+            return ProcessGroup(id: id, title: String(id.dropFirst("plugin:".count)), subtitle: rows.count > 1 ? "plugin · \(rows.count) processos" : "plugin · \(first.title)", kind: kinds.count == 1 ? first.kind : .other, rows: rows, sort: sort)
         }
         if id.hasPrefix("dev:") {
             return ProcessGroup(id: id, title: first.project ?? first.title, subtitle: first.title + (rows.count > 1 ? " · \(rows.count) processos" : ""), kind: .devServer, rows: rows, sort: sort)
