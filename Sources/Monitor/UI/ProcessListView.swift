@@ -12,9 +12,11 @@ struct ProcessListView: View {
     @Binding var selection: Selection?
     @Binding var expanded: Set<String>
     let onClose: (ProcessGroup) -> Void
+    /// Row order captured while the pointer is over the list, so a re-sort can't move a row under the cursor.
+    @State private var frozenOrder: [String]?
 
     var body: some View {
-        let groups = store.groups
+        let groups = ordered(store.groups)
         let maxBytes = max(groups.first?.footprintBytes ?? 1, 1)
         let suspectIds = Set(store.suspects.map(\.id))
         VStack(spacing: 0) {
@@ -29,9 +31,16 @@ struct ProcessListView: View {
                     }
                 }
             }
+            .onHover { inside in frozenOrder = inside ? store.groups.map(\.id) : nil }
         }
         .glassPanel()
         .clipShape(RoundedRectangle(cornerRadius: 10))
+    }
+
+    private func ordered(_ groups: [ProcessGroup]) -> [ProcessGroup] {
+        guard let frozenOrder else { return groups }
+        let rank = Dictionary(frozenOrder.enumerated().map { ($1, $0) }, uniquingKeysWith: { a, _ in a })
+        return groups.enumerated().sorted { (rank[$0.element.id] ?? frozenOrder.count + $0.offset, $0.offset) < (rank[$1.element.id] ?? frozenOrder.count + $1.offset, $1.offset) }.map(\.element)
     }
 
     private var header: some View {

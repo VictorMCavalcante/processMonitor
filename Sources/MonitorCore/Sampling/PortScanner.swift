@@ -45,13 +45,14 @@ public enum PortScanner {
         byPid(parseSockets(lsofOutput: lsofOutput))
     }
 
-    public static func scanSockets(runner: CommandRunner = SystemCommandRunner()) -> [ListeningSocket] {
-        guard let result = runner.run("/usr/sbin/lsof", ["-nP", "-iTCP", "-sTCP:LISTEN", "-Fpn"], timeout: 3) else { return [] }
+    /// nil when lsof failed or timed out, so the caller keeps the previous scan instead of showing no ports.
+    public static func scanSockets(runner: CommandRunner = SystemCommandRunner()) -> [ListeningSocket]? {
+        guard let result = runner.run("/usr/sbin/lsof", ["-nP", "-iTCP", "-sTCP:LISTEN", "-Fpn"], timeout: 3) else { return nil }
         return parseSockets(lsofOutput: result.output)
     }
 
     public static func scan() -> [Int32: [UInt16]] {
-        byPid(scanSockets())
+        byPid(scanSockets() ?? [])
     }
 
     private static func exposure(of address: String) -> Exposure {

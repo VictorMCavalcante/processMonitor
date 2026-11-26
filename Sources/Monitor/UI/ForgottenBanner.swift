@@ -3,7 +3,9 @@ import SwiftUI
 
 struct ForgottenBanner: View {
     let store: MonitorStore
+    let onClose: (Set<Int32>) -> Void
     @State private var unchecked: Set<Int32> = []
+    @State private var seen: Set<Int32> = []
 
     var body: some View {
         let selected = Set(store.suspects.map(\.id)).subtracting(unchecked)
@@ -13,7 +15,7 @@ struct ForgottenBanner: View {
                 Text("· liberaria \(Format.bytes(store.suspectBytes))").foregroundStyle(Theme.muted)
                 Spacer()
                 Button("Fechar \(selected.count) selecionado\(selected.count == 1 ? "" : "s")") {
-                    Task { await store.closeSuspects(selected) }
+                    onClose(selected)
                 }
                 .buttonStyle(PillButton(color: Theme.bad))
                 .disabled(selected.isEmpty)
@@ -24,7 +26,15 @@ struct ForgottenBanner: View {
         .padding(10)
         .background(RoundedRectangle(cornerRadius: 10).fill(LinearGradient(colors: [Theme.warn.opacity(0.14), Theme.warn.opacity(0.04)], startPoint: .leading, endPoint: .trailing)))
         .overlay(RoundedRectangle(cornerRadius: 10).stroke(Theme.warn.opacity(0.35)))
-        .onAppear { unchecked = Set(store.suspects.filter { switch $0.reason { case .suspendedSession, .idleSession: true; default: false } }.map(\.id)) }
+        .onAppear(perform: uncheckNewSessions)
+        .onChange(of: store.suspects.map(\.id)) { uncheckNewSessions() }
+    }
+
+    /// Claude sessions start unchecked, also ones that join the list while the banner is showing.
+    private func uncheckNewSessions() {
+        let fresh = store.suspects.filter { !seen.contains($0.id) }
+        unchecked.formUnion(fresh.filter { switch $0.reason { case .suspendedSession, .idleSession: true; default: false } }.map(\.id))
+        seen = Set(store.suspects.map(\.id))
     }
 }
 

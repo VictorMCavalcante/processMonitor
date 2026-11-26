@@ -15,6 +15,7 @@ enum PendingAction {
     case stopContainer(id: String, name: String)
     case restart(ProcessGroup, dockerContainers: Int)
     case cleanDisk([DiskItem])
+    case closeSuspects([Suspect])
 
     var title: String {
         switch self {
@@ -22,6 +23,7 @@ enum PendingAction {
         case .stopContainer(_, let name): "Parar o container \(name)?"
         case .restart(let g, _): "Reiniciar \(g.title)?"
         case .cleanDisk(let items): "Limpar \(Format.bytes(items.reduce(0) { $0 + $1.bytes }))?"
+        case .closeSuspects(let s): "Fechar \(s.count) esquecido\(s.count == 1 ? "" : "s")?"
         }
     }
 }
@@ -194,7 +196,7 @@ struct MainWindow: View {
     private var content: some View {
         switch tab {
         case .processes:
-            if !store.suspects.isEmpty { ForgottenBanner(store: store) }
+            if !store.suspects.isEmpty { ForgottenBanner(store: store) { ids in pending = .closeSuspects(store.suspects.filter { ids.contains($0.id) }) } }
             ProcessListView(store: store, selection: $selection, expanded: $expanded) { request($0, .normal) }
         case .ports:
             PortsView(store: store) { releasePort($0) }
@@ -215,6 +217,7 @@ struct MainWindow: View {
         case .stopContainer: "Parar"
         case .restart: "Reiniciar"
         case .cleanDisk: "Limpar"
+        case .closeSuspects: "Fechar"
         case nil: "OK"
         }
     }
@@ -229,6 +232,8 @@ struct MainWindow: View {
             Task { _ = await store.restart(g) }
         case .cleanDisk(let items):
             Task { _ = await store.cleanDisk(items) }
+        case .closeSuspects(let s):
+            Task { await store.closeSuspects(Set(s.map(\.id))) }
         }
     }
 
@@ -282,6 +287,9 @@ struct MainWindow: View {
                 lines.append("As imagens do Docker são apagadas na hora, sem Lixeira.")
             }
             return lines.joined(separator: "\n")
+        case .closeSuspects(let s):
+            let names = s.prefix(8).map { store.sessionLabel($0.row) ?? $0.row.identified.title } + (s.count > 8 ? ["e mais \(s.count - 8)"] : [])
+            return names.joined(separator: "\n")
         case .stopContainer(_, let name):
             return "O container \(name) será parado. Os outros containers continuam rodando."
         case .restart(_, let containers):

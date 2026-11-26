@@ -3,7 +3,7 @@ import Foundation
 import Testing
 @testable import MonitorCore
 
-@Test func devServerKillsWholeChainChildrenFirst() {
+@Test func devServerKillsWholeChainParentsFirst() {
     let all: [ProcessSnapshot] = [
         .fixture(pid: 50, name: "zsh", ppid: 1),
         .fixture(pid: 60, name: "npm", arguments: ["npm", "run", "dev"], ppid: 50),
@@ -12,7 +12,7 @@ import Testing
     ]
     let g = ProcessGroup.fixture(kind: .devServer, pids: [71066], in: all)
     guard case .signals(let steps) = TerminationPlanner.plan(g, all: all, mode: .normal, myUid: 501) else { Issue.record("expected signals"); return }
-    #expect(steps.map(\.pid) == [71070, 71066, 60])
+    #expect(steps.map(\.pid) == [60, 71066, 71070])
     #expect(steps.allSatisfy { $0.signals == [SIGTERM] })
 }
 
@@ -80,7 +80,7 @@ import Testing
         func send(_ s: Int32, to pid: Int32) -> Int32 { sent.append(s); return 0 }
     }
     let f = Fake()
-    _ = TerminationExecutor.run([.init(pid: 5, startTime: Date(timeIntervalSince1970: 1), signals: [SIGCONT, SIGTERM])], signaler: f, grace: 0.1)
+    _ = TerminationExecutor.run([.init(pid: 5, startTime: Date(timeIntervalSince1970: 1), signals: [SIGCONT, SIGTERM])], signaler: f, grace: 0.1, verify: 0.1)
     #expect(f.sent == [SIGCONT, SIGTERM, SIGKILL])
 }
 
@@ -96,4 +96,33 @@ import Testing
     #expect(ClaudeSessionTitle.plugin(in: ["bun", "/Users/a/.claude/plugins/cache/thedotmack/claude-mem/15.13.0/scripts/w.cjs"]) == "claude-mem")
     #expect(ClaudeSessionTitle.plugin(in: ["--plugin-dir=/x/plugins/cache/org/foo/1.0"]) == "foo")
     #expect(ClaudeSessionTitle.plugin(in: ["claude", "-p"]) == nil)
+}
+
+@Test func ignoredSigtermIsReportedNotSilent() {
+    final class Fake: Signaler, @unchecked Sendable {
+        func currentStartTime(of pid: Int32) -> Date? { Date(timeIntervalSince1970: 1) }
+        func send(_ s: Int32, to pid: Int32) -> Int32 { 0 }
+    }
+    let r = TerminationExecutor.run([.init(pid: 5, startTime: Date(timeIntervalSince1970: 1), signals: [SIGTERM])], signaler: Fake(), verify: 0.1)
+    #expect(r[5] == TerminationExecutor.stillRunning)
+}
+
+@Test func devServerDoesNotClimbIntoNodeAgent() {
+    let all: [ProcessSnapshot] = [
+        .fixture(pid: 10, name: "node", arguments: ["node", "/opt/homebrew/bin/claude"], ppid: 1),
+        .fixture(pid: 20, name: "node", arguments: ["node", "/opt/homebrew/bin/npm", "run", "dev"], ppid: 10),
+        .fixture(pid: 30, name: "sh", arguments: ["sh", "-c", "vite"], ppid: 20),
+        .fixture(pid: 40, name: "node", arguments: ["node", "vite"], ppid: 30),
+    ]
+    guard case .signals(let steps) = TerminationPlanner.plan(.fixture(kind: .devServer, pids: [40], in: all), all: all, mode: .normal, myUid: 501) else { Issue.record("expected signals"); return }
+    #expect(steps.map(\.pid) == [20, 30, 40])
+}
+
+@Test func failedCpuReadingKeepsBaseline() {
+    var t = CPUTracker()
+    let start = Date(timeIntervalSince1970: 1)
+    _ = t.update([.fixture(pid: 1, cpuTimeNs: 1_000_000_000_000, start: start)], at: Date(timeIntervalSince1970: 100))
+    #expect(t.update([.fixture(pid: 1, cpuTimeNs: 0, start: start)], at: Date(timeIntervalSince1970: 103))[1] == 0)
+    let pct = t.update([.fixture(pid: 1, cpuTimeNs: 1_000_300_000_000, start: start)], at: Date(timeIntervalSince1970: 106))[1] ?? -1
+    #expect(abs(pct - 5) < 0.01)
 }
