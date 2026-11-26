@@ -7,7 +7,7 @@ struct MonitorApp: App {
     @State private var policy = PolicyBox()
 
     init() {
-        LaunchAtLogin.setupOnFirstRun()
+        LaunchAtLogin.syncOnLaunch()
         Notifier.requestAuthorization()
     }
 

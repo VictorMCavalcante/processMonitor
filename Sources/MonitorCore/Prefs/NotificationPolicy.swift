@@ -8,9 +8,13 @@ public enum AlertKind: Equatable, Sendable {
 
 public struct NotificationPolicy: Sendable {
     public static let pressureCooldown: TimeInterval = 600
+    /// A suspect that blinks out for a cycle or two (CPU blip, half-written status file) is not new when
+    /// it comes back; only one gone for this long gets notified again.
+    public static let suspectForgetAfter: TimeInterval = 3600
     private var notifiedLevel: PressureLevel = .normal
     private var lastPressureAlert: Date?
-    private var seenSuspects: Set<IgnoreKey> = []
+    private var lastAlertedLevel: PressureLevel = .normal
+    private var seenSuspects: [IgnoreKey: Date] = [:]
 
     public init() {}
 
@@ -19,32 +23,47 @@ public struct NotificationPolicy: Sendable {
     private static let runawayPrefix = "runaway:"
 
     public init(seen: Set<IgnoreKey>) {
-        seenSuspects = Set(seen.filter { !$0.raw.hasPrefix(Self.runawayPrefix) })
+        seenSuspects = Dictionary(seen.filter { !$0.raw.hasPrefix(Self.runawayPrefix) }.map { ($0, Date()) }, uniquingKeysWith: { a, _ in a })
         let restored = seen.filter { $0.raw.hasPrefix(Self.runawayPrefix) }.map { IgnoreKey(raw: String($0.raw.dropFirst(Self.runawayPrefix.count))) }
         runawayNotifiedAt = Dictionary(restored.map { ($0, Date()) }, uniquingKeysWith: { a, _ in a })
     }
 
     public var seen: Set<IgnoreKey> {
-        seenSuspects.union(runawayNotifiedAt.keys.map { IgnoreKey(raw: Self.runawayPrefix + $0.raw) })
+        Set(seenSuspects.keys).union(runawayNotifiedAt.keys.map { IgnoreKey(raw: Self.runawayPrefix + $0.raw) })
+    }
+
+    /// Stable per alert, so a repeat replaces the old banner in Notification Center instead of stacking.
+    public static func identifier(_ alert: AlertKind) -> String {
+        switch alert {
+        case .pressureRose: "pressure"
+        case .newSuspect(let key, _): "suspect:" + key.raw
+        case .runaway(let key, _, _): runawayPrefix + key.raw
+        }
     }
 
     public mutating func evaluate(level: PressureLevel, suspects: [Suspect], runaways: [Runaway] = [], now: Date) -> [AlertKind] {
         var alerts: [AlertKind] = []
         if level == .normal {
             notifiedLevel = .normal
-        } else if level > notifiedLevel, level == .critical || (lastPressureAlert.map { now.timeIntervalSince($0) >= Self.pressureCooldown } ?? true) {
-            notifiedLevel = level
-            lastPressureAlert = now
-            alerts.append(.pressureRose(level))
-        }
-        let current = Set(suspects.map { IgnoreKey.of($0.row) })
-        for s in suspects {
-            let key = IgnoreKey.of(s.row)
-            if !seenSuspects.contains(key) {
-                alerts.append(.newSuspect(key, title: [s.row.identified.title, s.row.identified.project].compactMap { $0 }.joined(separator: " · ")))
+        } else if level > notifiedLevel {
+            // Within the cooldown only an escalation past the last alert (warning → critical) notifies,
+            // so pressure flapping around a threshold doesn't alert every cycle.
+            let cooledDown = lastPressureAlert.map { now.timeIntervalSince($0) >= Self.pressureCooldown } ?? true
+            if cooledDown || level > lastAlertedLevel {
+                notifiedLevel = level
+                lastPressureAlert = now
+                lastAlertedLevel = level
+                alerts.append(.pressureRose(level))
             }
         }
-        seenSuspects = current
+        seenSuspects = seenSuspects.filter { now.timeIntervalSince($0.value) < Self.suspectForgetAfter }
+        for s in suspects {
+            let key = IgnoreKey.of(s.row)
+            if seenSuspects[key] == nil {
+                alerts.append(.newSuspect(key, title: [s.row.identified.title, s.row.identified.project].compactMap { $0 }.joined(separator: " · ")))
+            }
+            seenSuspects[key] = now
+        }
         runawayNotifiedAt = runawayNotifiedAt.filter { now.timeIntervalSince($0.value) < Self.runawayCooldown }
         for r in runaways {
             let key = IgnoreKey.of(r.row)

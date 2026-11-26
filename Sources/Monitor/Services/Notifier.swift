@@ -26,6 +26,6 @@ enum Notifier {
             content.title = "Processo descontrolado: \(title)"
             content.body = hint
         }
-        UNUserNotificationCenter.current().add(UNNotificationRequest(identifier: UUID().uuidString, content: content, trigger: nil))
+        UNUserNotificationCenter.current().add(UNNotificationRequest(identifier: NotificationPolicy.identifier(alert), content: content, trigger: nil))
     }
 }

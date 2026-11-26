@@ -4,12 +4,18 @@ import SwiftUI
 struct PreferencesView: View {
     let store: MonitorStore
     @State private var launchAtLogin = LaunchAtLogin.isEnabled
+    @State private var loginError: String?
     @State private var notifications = Notifier.enabled
     @State private var ignored: [(key: IgnoreKey, label: String)] = []
 
     var body: some View {
         VStack(alignment: .leading, spacing: 12) {
-            Toggle("Abrir ao iniciar o Mac", isOn: $launchAtLogin).onChange(of: launchAtLogin) { _, on in LaunchAtLogin.set(on) }
+            Toggle("Abrir ao iniciar o Mac", isOn: $launchAtLogin).onChange(of: launchAtLogin) { _, on in
+                guard on != LaunchAtLogin.isEnabled else { return }
+                loginError = LaunchAtLogin.set(on)
+                launchAtLogin = LaunchAtLogin.isEnabled
+            }
+            if let loginError { Text(loginError).foregroundStyle(Theme.warn).font(.system(size: 11)).fixedSize(horizontal: false, vertical: true) }
             Toggle("Notificações", isOn: $notifications).onChange(of: notifications) { _, on in Notifier.enabled = on }
             Divider()
             Text("Ignorados").font(.system(size: 12, weight: .semibold))
