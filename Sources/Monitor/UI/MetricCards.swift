@@ -17,7 +17,7 @@ struct MetricCards: View {
 
     private func card(_ title: String, _ value: String, key: String, valueColor: Color = Theme.text, note: String? = nil) -> some View {
         StatCard(title: title, value: value, valueColor: valueColor, note: note) {
-            Sparkline(values: store.history[key]?.elements ?? [], color: Theme.chart[key] ?? Theme.accent).padding(.top, 4)
+            Sparkline(values: store.history[key]?.elements ?? [], color: Theme.chart[key] ?? Theme.accent, label: title, format: Sparkline.format(key: key)).padding(.top, 4)
         }
     }
 }

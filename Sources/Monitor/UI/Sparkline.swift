@@ -1,9 +1,13 @@
+import MonitorCore
 import SwiftUI
 
 struct Sparkline: View {
     let values: [Double]
     let color: Color
     var height: CGFloat = 22
+    /// What the line shows, for VoiceOver; nil hides the chart from it.
+    var label: String? = nil
+    var format: (Double) -> String = { "\(Int($0.rounded()))%" }
 
     var body: some View {
         GeometryReader { geo in
@@ -19,6 +23,20 @@ struct Sparkline: View {
             }
         }
         .frame(height: height)
+        .accessibilityElement()
+        .accessibilityHidden(label == nil)
+        .accessibilityLabel("Histórico de \(label ?? "")")
+        .accessibilityValue(summary)
+    }
+
+    private var summary: String {
+        guard let last = values.last, let lo = values.min(), let hi = values.max() else { return "sem dados" }
+        return "agora \(format(last)), mínimo \(format(lo)), máximo \(format(hi))"
+    }
+
+    /// Value format for a history key: bytes for memory series, percent otherwise.
+    static func format(key: String) -> (Double) -> String {
+        ["used", "swap"].contains(key) ? { Format.bytes(UInt64(max($0, 0))) } : { "\(Int($0.rounded()))%" }
     }
 
     private func path(in size: CGSize) -> Path {

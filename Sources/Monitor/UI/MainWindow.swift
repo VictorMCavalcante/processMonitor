@@ -123,6 +123,7 @@ struct MainWindow: View {
                 .buttonStyle(.plain)
                 .foregroundStyle(Theme.muted)
                 .help("Preferências")
+                .accessibilityLabel("Preferências")
                 .popover(isPresented: $showPreferences) { PreferencesView(store: store) }
         }
     }

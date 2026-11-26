@@ -70,6 +70,7 @@ struct PortsView: View {
     }
 
     private func row(cells: [String], header: Bool, exposure: Exposure? = nil, action: (() -> Void)?) -> some View {
+        let releaseLabel = "Liberar porta \(cells.first ?? "")"
         let widths: [CGFloat?] = [70, nil, 170, 120, 130, 90]
         return HStack(spacing: 10) {
             ForEach(Array(cells.enumerated()), id: \.offset) { i, text in
@@ -87,7 +88,7 @@ struct PortsView: View {
             Group {
                 if let action {
                     Button(action: action) { Image(systemName: "xmark").font(.system(size: 10, weight: .bold)) }
-                        .buttonStyle(.plain).foregroundStyle(Theme.muted).help("Liberar porta")
+                        .buttonStyle(.plain).foregroundStyle(Theme.muted).help("Liberar porta").accessibilityLabel(releaseLabel)
                 } else {
                     Color.clear
                 }

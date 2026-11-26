@@ -11,8 +11,18 @@ struct MenuBarLabel: View {
                 Image(nsImage: Self.pulse(Theme.nsColor(for: stats.level)))
                 Text("\(stats.pressurePercent)%")
             }
+            .accessibilityElement(children: .ignore)
+            .accessibilityLabel("Vernio, pressão de memória \(stats.pressurePercent)%, \(Self.levelName(stats.level))")
         } else {
-            Image(nsImage: Self.pulse(.labelColor))
+            Image(nsImage: Self.pulse(.labelColor)).accessibilityLabel("Vernio")
+        }
+    }
+
+    static func levelName(_ level: PressureLevel) -> String {
+        switch level {
+        case .normal: "normal"
+        case .warning: "moderada"
+        case .critical: "crítica"
         }
     }
 

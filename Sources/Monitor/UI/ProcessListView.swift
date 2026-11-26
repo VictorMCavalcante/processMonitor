@@ -87,10 +87,15 @@ struct ProcessListView: View {
         .background(selected ? Theme.accent.opacity(0.10) : .clear)
         .overlay(alignment: .leading) { if selected { Theme.accent.frame(width: 2) } }
         .contentShape(Rectangle())
-        .onTapGesture {
-            selection = .group(g.id)
-            if g.rows.count > 1 { if expanded.contains(g.id) { expanded.remove(g.id) } else { expanded.insert(g.id) } }
-        }
+        .onTapGesture { activate(g) }
+        .rowAccessibility(label: [g.title, g.subtitle, "\(Format.bytes(g.footprintBytes)) de memória", "CPU \(Format.cpu(g.cpuPercent, cores: ProcessInfo.processInfo.activeProcessorCount))",
+                                  g.rows.count > 1 ? "\(g.rows.count) processos, \(expanded.contains(g.id) ? "expandido" : "recolhido")" : nil].compactMap { $0 }.joined(separator: ", "),
+                          selected: selected) { activate(g) }
+    }
+
+    private func activate(_ g: ProcessGroup) {
+        selection = .group(g.id)
+        if g.rows.count > 1 { if expanded.contains(g.id) { expanded.remove(g.id) } else { expanded.insert(g.id) } }
     }
 
     private func childRow(_ r: ProcessRow, in g: ProcessGroup) -> some View {
@@ -115,6 +120,8 @@ struct ProcessListView: View {
         .background(selected ? Theme.accent.opacity(0.10) : Theme.row)
         .contentShape(Rectangle())
         .onTapGesture { selection = .process(r.id) }
+        .rowAccessibility(label: [store.sessionLabel(r) ?? r.snapshot.name, "PID \(r.id)", "\(Format.bytes(r.snapshot.footprintBytes)) de memória"].joined(separator: ", "),
+                          selected: selected) { selection = .process(r.id) }
     }
 
     @ViewBuilder
@@ -152,6 +159,20 @@ struct ProcessListView: View {
     }
 }
 
+private extension View {
+    /// Clickable rows: reachable with Tab / full keyboard access (Return or Space selects) and by VoiceOver,
+    /// whose default action does what a click does. The close button stays a separate element.
+    func rowAccessibility(label: String, selected: Bool, action: @escaping () -> Void) -> some View {
+        self
+            .focusable()
+            .onKeyPress(keys: [.return, .space]) { _ in action(); return .handled }
+            .accessibilityElement(children: .contain)
+            .accessibilityLabel(label)
+            .accessibilityAddTraits(selected ? [.isButton, .isSelected] : .isButton)
+            .accessibilityAction(.default, action)
+    }
+}
+
 struct CloseButton: View {
     let store: MonitorStore
     let group: ProcessGroup
@@ -164,6 +185,8 @@ struct CloseButton: View {
         }
         .buttonStyle(.plain)
         .foregroundStyle(Theme.muted)
+        .accessibilityLabel("Fechar \(group.title)")
+        .accessibilityHidden(reason != nil)
         .opacity(reason == nil ? 1 : 0)
         .disabled(reason != nil)
         .modifier(DisabledReason(reason: reason))

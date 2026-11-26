@@ -59,7 +59,7 @@ struct DiskView: View {
                 Text("analisado há \(Format.age(since: d.scannedAt, now: store.now))").font(.system(size: 11)).foregroundStyle(Theme.muted)
             }
             Button { Task { await store.analyzeDisk() } } label: { Image(systemName: "arrow.clockwise") }
-                .buttonStyle(.plain).foregroundStyle(Theme.muted).disabled(busy).help("Analisar de novo")
+                .buttonStyle(.plain).foregroundStyle(Theme.muted).disabled(busy).help("Analisar de novo").accessibilityLabel("Analisar de novo")
         }
     }
 
@@ -206,6 +206,8 @@ struct DiskView: View {
             Image(systemName: on ? "checkmark.square.fill" : "square").foregroundStyle(on ? Theme.ok : Theme.muted2)
         }
         .buttonStyle(.plain)
+        .accessibilityLabel("Limpar \(item.title)")
+        .accessibilityValue(on ? "marcado" : "desmarcado")
     }
 
     private func footer(_ d: DiskReport) -> some View {

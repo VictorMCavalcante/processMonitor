@@ -86,7 +86,7 @@ struct PopoverView: View {
                 Text(title.uppercased()).font(.system(size: 9.5, weight: .semibold)).tracking(0.6).foregroundStyle(Theme.muted)
             }
             Text(value ?? "–").font(.system(size: 17, weight: .bold, design: .rounded).monospacedDigit())
-            Sparkline(values: store.history[key]?.elements ?? [], color: color, height: 26).padding(.top, 2)
+            Sparkline(values: store.history[key]?.elements ?? [], color: color, height: 26, label: title, format: Sparkline.format(key: key)).padding(.top, 2)
         }
         .padding(10)
         .frame(maxWidth: .infinity, alignment: .leading)

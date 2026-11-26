@@ -10,7 +10,7 @@ enum Theme {
     static var line: Color { glass ? Color(hex: 0x3E4451) : Color(hex: 0x2E2640) }
     static let text = Color(hex: 0xF3EFFA)
     static var muted: Color { glass ? Color(hex: 0x9DA5B4) : Color(hex: 0x9A90AD) }
-    static var muted2: Color { glass ? Color(hex: 0x5C6370) : Color(hex: 0x6B6380) }
+    static var muted2: Color { glass ? Color(hex: 0x8A919E) : Color(hex: 0x928AA6) } // ≥4.3:1 on the panels
     static let brand = Color(hex: 0x8B3DFF)
     static let accent = Color(hex: 0xB48CFF)
     static let mist = Color(hex: 0xD9C7FF)
