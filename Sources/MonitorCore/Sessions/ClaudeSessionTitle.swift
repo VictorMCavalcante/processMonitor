@@ -1,4 +1,5 @@
 import Foundation
+import os
 
 public struct ClaudeSessionInfo: Sendable, Equatable {
     public var title: String?
@@ -61,9 +62,12 @@ public enum ClaudeSessionTitle {
         let size = (try? handle.seekToEnd()) ?? 0
         try? handle.seek(toOffset: size > tailBytes ? size - tailBytes : 0)
         var result = parse(String(decoding: (try? handle.readToEnd()) ?? Data(), as: UTF8.self))
-        if result.title == nil, size > tailBytes {
+        // Full read only when the file grew since the last full read found no title (it can be tens of MB).
+        if result.title == nil, size > tailBytes, untitled.withLock({ $0[transcript.path] }) != size {
             try? handle.seek(toOffset: 0)
             result.title = parse(String(decoding: (try? handle.readToEnd()) ?? Data(), as: UTF8.self)).title
+            let found = result.title != nil
+            untitled.withLock { $0[transcript.path] = found ? nil : size }
         }
         return result
     }
@@ -79,6 +83,8 @@ public enum ClaudeSessionTitle {
     }
 
     static let tailBytes: UInt64 = 512 * 1024
+    /// Transcript path → size at which a full read found no title.
+    private static let untitled = OSAllocatedUnfairLock(initialState: [String: UInt64]())
 
     static func parse(_ text: String) -> ClaudeSessionInfo {
         var ai: String?

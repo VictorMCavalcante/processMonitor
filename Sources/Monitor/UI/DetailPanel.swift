@@ -129,7 +129,7 @@ struct DetailPanel: View {
     }
 
     private var overview: some View {
-        let groups = Grouping.group(store.rows, mode: .byApp)
+        let groups = store.appGroups
         let cores = ProcessInfo.processInfo.activeProcessorCount
         let cpu = groups.sorted { $0.cpuPercent > $1.cpuPercent }.prefix(4).filter { $0.cpuPercent >= 0.5 }
         let grew = groups.compactMap { g -> (ProcessGroup, Int64)? in
@@ -221,11 +221,15 @@ struct DetailPanel: View {
         }
     }
 
-    private func started(_ d: Date) -> String {
+    private static let startedFormat: DateFormatter = {
         let f = DateFormatter()
         f.locale = Locale(identifier: "pt_BR")
         f.dateFormat = "dd/MM 'às' HH:mm"
-        return "\(f.string(from: d)) · \(Format.age(since: d, now: store.now))"
+        return f
+    }()
+
+    private func started(_ d: Date) -> String {
+        "\(Self.startedFormat.string(from: d)) · \(Format.age(since: d, now: store.now))"
     }
 
     private func parent(_ r: ProcessRow) -> String {

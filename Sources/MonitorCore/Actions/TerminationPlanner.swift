@@ -47,16 +47,23 @@ public enum TerminationPlanner {
     public static let alreadyGone = "O processo já tinha terminado."
     private static let terminalApps: Set<String> = ["Terminal", "iTerm", "iTerm2", "Ghostty", "Warp", "WezTerm", "Alacritty", "kitty", "Hyper"]
 
-    public static func plan(_ group: ProcessGroup, all: [ProcessSnapshot], mode: TerminationMode, myUid: UInt32) -> TerminationPlan {
+    /// Why the group can never be closed from here, without walking the process table.
+    /// Cheap enough for every row's close button; `plan` still re-checks everything on click.
+    public static func blockReason(_ group: ProcessGroup, myUid: UInt32) -> String? {
         if group.kind == .system, group.title == Classifier.fleetTitle {
-            return .notAllowed(reason: "Gerenciado pela empresa (Fleet). Roda como root e o agente reabre o que for fechado.")
+            return "Gerenciado pela empresa (Fleet). Roda como root e o agente reabre o que for fechado."
         }
         if group.kind == .system {
-            return .notAllowed(reason: "Processo do sistema. Fechar pode deixar o Mac instável ou encerrar sua sessão.")
+            return "Processo do sistema. Fechar pode deixar o Mac instável ou encerrar sua sessão."
         }
         if let foreign = group.rows.first(where: { $0.snapshot.uid != myUid }) {
-            return .notAllowed(reason: "Processo de outro usuário (\(userName(foreign.snapshot.uid))). Feche pelo Terminal com sudo.")
+            return "Processo de outro usuário (\(userName(foreign.snapshot.uid))). Feche pelo Terminal com sudo."
         }
+        return nil
+    }
+
+    public static func plan(_ group: ProcessGroup, all: [ProcessSnapshot], mode: TerminationMode, myUid: UInt32) -> TerminationPlan {
+        if let reason = blockReason(group, myUid: myUid) { return .notAllowed(reason: reason) }
         if group.kind == .appProcess, let app = group.rows.first?.identified.appBundlePath {
             return .quitApp(bundlePath: app, force: mode == .force)
         }

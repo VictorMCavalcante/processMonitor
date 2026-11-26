@@ -16,12 +16,22 @@ final class MonitorStore {
     var rows: [ProcessRow] = []
     var allSnapshots: [ProcessSnapshot] = []
     var suspects: [Suspect] = []
-    var mode: GroupingMode = .byApp
-    var sort: GroupSort = .memory
-    var search = ""
+    var mode: GroupingMode = .byApp { didSet { regroup() } }
+    var sort: GroupSort = .memory { didSet { regroup() } }
+    var search = "" { didSet { regroup() } }
+    /// Filtered and grouped once per cycle (and on mode/sort/search change), not on every view access.
+    private(set) var groups: [ProcessGroup] = []
+    /// All rows by app, default sort: overview, popover, peaks and growth.
+    private(set) var appGroups: [ProcessGroup] = []
     var windowVisible = false {
         didSet {
             if windowVisible && !oldValue && refreshing == 0 { Task { await refresh() } }
+        }
+    }
+    /// Window open but fully covered or minimized: keep it alive, poll at the slow rate.
+    var windowOccluded = false {
+        didSet {
+            if oldValue && !windowOccluded && windowVisible && refreshing == 0 { Task { await refresh() } }
         }
     }
     var lastMessage: String?
@@ -33,7 +43,8 @@ final class MonitorStore {
     @ObservationIgnored private var gpuTracker = GPUTracker()
     var sockets: [ListeningSocket] = []
     var dockerRunning = false
-    var containers: [DockerContainer] = []
+    var containers: [DockerContainer] = [] { didSet { if containers != oldValue { rebuildPorts() } } }
+    private var portTable: [PortEntry] = []
     var runaways: [Runaway] = []
     var peaks: [PeakEpisode] = []
     var disk: DiskReport?
@@ -83,14 +94,19 @@ final class MonitorStore {
     @ObservationIgnored private var refreshTask: Task<Void, Never>?
     @ObservationIgnored private var refreshing = 0
 
-    var groups: [ProcessGroup] {
+    private func regroup() {
         let query = search.trimmingCharacters(in: .whitespaces).lowercased()
+        if query.isEmpty, mode == .byApp, sort == .memory { groups = appGroups; return }
         let filtered = query.isEmpty ? rows : rows.filter { row in
             let id = row.identified
             let fields = [id.title, id.subtitle ?? "", id.project ?? "", row.snapshot.name] + row.ports.map(String.init)
             return fields.contains { $0.lowercased().contains(query) }
         }
-        return Grouping.group(filtered, mode: mode, sort: sort)
+        groups = Grouping.group(filtered, mode: mode, sort: sort)
+    }
+
+    private func rebuildPorts() {
+        portTable = PortTable.build(sockets: sockets, rows: rows, containers: containers)
     }
 
     var energyGroups: [ProcessGroup] { Grouping.group(rows, mode: .byApp, sort: .energy) }
@@ -189,7 +205,7 @@ final class MonitorStore {
     }
 
     var portEntries: [PortEntry] {
-        let entries = PortTable.build(sockets: sockets, rows: rows, containers: containers)
+        let entries = portTable
         let query = search.trimmingCharacters(in: .whitespaces).lowercased()
         guard !query.isEmpty else { return entries }
         return entries.filter { e in
@@ -198,7 +214,7 @@ final class MonitorStore {
     }
 
     var highlightedPorts: [UInt16] {
-        let entries = PortTable.build(sockets: sockets, rows: rows, containers: containers)
+        let entries = portTable
         let priority: (PortEntry) -> Int = { e in
             switch e.owner {
             case .container: 0
@@ -227,7 +243,7 @@ final class MonitorStore {
     func releasePort(_ port: UInt16) async -> PortRelease {
         lastPortScan = .distantPast
         await refresh()
-        return PortTable.release(port: port, entries: PortTable.build(sockets: sockets, rows: rows, containers: containers), all: allSnapshots, myUid: getuid())
+        return PortTable.release(port: port, entries: portTable, all: allSnapshots, myUid: getuid())
     }
 
     func stopContainer(_ id: String) async -> String? {
@@ -263,7 +279,17 @@ final class MonitorStore {
         let busy = busyCwds
         let client = dockerRunning ? docker : nil
         let store = diskStore
-        let progress: @Sendable (DiskProgress) -> Void = { p in Task { @MainActor [weak self] in self?.diskStep(p, scan: scan) } }
+        let lastHop = OSAllocatedUnfairLock(initialState: Date.distantPast)
+        let progress: @Sendable (DiskProgress) -> Void = { p in
+            // Measuring reports once per item (thousands); drop updates within 100 ms of the last one, except the last.
+            let send = lastHop.withLock { last in
+                let now = Date()
+                guard p.done == nil || p.done == p.total || now.timeIntervalSince(last) >= 0.1 else { return false }
+                last = now
+                return true
+            }
+            if send { Task { @MainActor [weak self] in self?.diskStep(p, scan: scan) } }
+        }
         let count = OSAllocatedUnfairLock(initialState: 0)
         let partial: @Sendable (DiskReport) -> Void = { r in
             let index = count.withLock { n in
@@ -353,7 +379,7 @@ final class MonitorStore {
         loop = Task { [weak self] in
             while let self, !Task.isCancelled {
                 await self.refresh()
-                try? await Task.sleep(for: .seconds(self.windowVisible ? 3 : 10))
+                try? await Task.sleep(for: .seconds(self.windowVisible && !self.windowOccluded ? 3 : 10))
             }
         }
     }
@@ -375,18 +401,20 @@ final class MonitorStore {
         let titlePids = previous.filter { $0.identified.kind == .claudeSession && Date().timeIntervalSince(titleCheckedAt[$0.id] ?? .distantPast) >= 60 }.map(\.id)
         for pid in titlePids { titleCheckedAt[pid] = Date() }
         let sessionPids = previous.filter { $0.identified.kind == .claudeSession }.map(\.id)
-        let (snaps, newSockets, gpuReading, batteryReading, blockers, titles, statuses) = await Task.detached(priority: .utility) { () -> ([ProcessSnapshot], [ListeningSocket]?, GPUReading?, BatteryReading?, [SleepBlocker]?, [Int32: ClaudeSessionInfo], [Int32: ClaudeSessionStatus]) in
+        let currentPorts = ports
+        let (snaps, newSockets, gpuReading, batteryReading, blockers, titles, statuses, classified) = await Task.detached(priority: .utility) { () -> ([ProcessSnapshot], [ListeningSocket]?, GPUReading?, BatteryReading?, [SleepBlocker]?, [Int32: ClaudeSessionInfo], [Int32: ClaudeSessionStatus], Classified) in
             let snaps = ProcessSampler().sample()
             let blockers = visible ? Self.arrange(SleepBlockers.build(SleepBlockers.read(now: Date()), rows: previous, all: snaps, now: Date()), rows: previous) : nil
             let titles = Dictionary(uniqueKeysWithValues: titlePids.compactMap { pid in ClaudeSessionTitle.lookup(pid: pid).map { (pid, $0) } })
             let statuses = Dictionary(uniqueKeysWithValues: sessionPids.compactMap { pid in ClaudeSessionTitle.status(pid: pid).map { (pid, $0) } })
-            return (snaps, scanPorts ? PortScanner.scanSockets() : nil, GPUSampler.read(), BatterySampler.read(), blockers, titles, statuses)
+            let sockets = scanPorts ? PortScanner.scanSockets() : nil
+            return (snaps, sockets, GPUSampler.read(), BatterySampler.read(), blockers, titles, statuses, Self.classify(snaps, ports: sockets.map(PortScanner.byPid) ?? currentPorts))
         }.value
         if let newSockets {
             sockets = newSockets
-            ports = PortScanner.byPid(newSockets)
             lastPortScan = Date()
         }
+        ports = classified.ports
         let at = Date()
         now = at
         var s = systemSampler.sample()
@@ -402,18 +430,17 @@ final class MonitorStore {
         let cpu = cpuTracker.update(snaps, at: at)
         let gpu = gpuReading.map { r in gpuTracker.update(r.perPid, starts: Dictionary(snaps.map { ($0.id, $0.startTime) }, uniquingKeysWith: { a, _ in a }), at: at) } ?? [:]
         let energy = energyTracker.update(snaps, at: at)
-        let live = snaps.filter { $0.state != .zombie && $0.id != getpid() }
+        let live = classified.live
         allSnapshots = snaps
         let livePids = Set(live.map(\.id))
         titleCheckedAt = titleCheckedAt.filter { livePids.contains($0.key) }
         let kept = sessions.filter { livePids.contains($0.key) }.merging(titles) { _, new in new }
         if kept != sessions { sessions = kept }
         if statuses != sessionStatus { sessionStatus = statuses }
-        let context = ClassifyContext(dockerRunning: Classifier.dockerRunning(in: snaps), plugins: Classifier.plugins(in: snaps))
-        dockerRunning = context.dockerRunning
-        rows = live.map { snap in
+        dockerRunning = classified.dockerRunning
+        rows = zip(live, classified.identified).map { snap, identified in
             let p = ports[snap.id] ?? []
-            return ProcessRow(snapshot: snap, identified: Classifier.classify(snap, ports: p, context: context), cpuPercent: cpu[snap.id] ?? 0, ports: p, gpuPercent: gpu[snap.id] ?? 0,
+            return ProcessRow(snapshot: snap, identified: identified, cpuPercent: cpu[snap.id] ?? 0, ports: p, gpuPercent: gpu[snap.id] ?? 0,
                               milliwatts: energy[snap.id]?.milliwatts ?? 0, wakeupsPerSecond: energy[snap.id]?.wakeupsPerSecond ?? 0)
         }
         battery = batteryReading
@@ -443,7 +470,9 @@ final class MonitorStore {
         suspects = ForgottenDetector.detect(rows, allPids: Set(snaps.map(\.id)), now: at, ignore: ignore, stoppedSince: stoppedByPid,
                                            idleSince: sessionStatus.filter { $0.value.isIdle }.mapValues(\.since))
         runaways = runawayTracker.update(rows, at: at, myUid: getuid(), ignore: ignore, onBattery: onBattery)
-        let appGroups = Grouping.group(rows, mode: .byApp)
+        appGroups = Grouping.group(rows, mode: .byApp)
+        regroup()
+        rebuildPorts()
         trackGrowth(appGroups, at: at)
         if let b = batteryReading {
             let interval = min(lastCycle.map { at.timeIntervalSince($0) } ?? 0, 3 * (windowVisible ? 3 : 10))
@@ -478,6 +507,22 @@ final class MonitorStore {
         onCycle?(self)
     }
 
+    private struct Classified: Sendable {
+        var live: [ProcessSnapshot]
+        var identified: [Identified]
+        var ports: [Int32: [UInt16]]
+        var dockerRunning: Bool
+    }
+
+    /// Runs off the main actor: classifying ~1000 processes is the heaviest part of a cycle.
+    nonisolated private static func classify(_ snaps: [ProcessSnapshot], ports: [Int32: [UInt16]]) -> Classified {
+        let me = getpid()
+        let live = snaps.filter { $0.state != .zombie && $0.id != me }
+        let context = ClassifyContext(dockerRunning: Classifier.dockerRunning(in: snaps), plugins: Classifier.plugins(in: snaps))
+        return Classified(live: live, identified: live.map { Classifier.classify($0, ports: ports[$0.id] ?? [], context: context) },
+                          ports: ports, dockerRunning: context.dockerRunning)
+    }
+
     nonisolated private static func arrange(_ blockers: [SleepBlocker], rows: [ProcessRow]) -> [SleepBlocker] {
         let sorted = blockers.sorted { ($0.since ?? .distantFuture, $0.id) < ($1.since ?? .distantFuture, $1.id) }
         let counts = Dictionary(sorted.map { ($0.title, 1) }, uniquingKeysWith: +)
@@ -493,7 +538,7 @@ final class MonitorStore {
         TerminationPlanner.plan(group, all: allSnapshots, mode: mode, myUid: getuid())
     }
 
-    func close(_ group: ProcessGroup, mode: TerminationMode) async -> String? {
+    func close(_ group: ProcessGroup, mode: TerminationMode, refreshAfter: Bool = true) async -> String? {
         let message: String?
         switch plan(for: group, mode: mode) {
         case .notAllowed(let reason):
@@ -506,16 +551,21 @@ final class MonitorStore {
             message = real.first ?? (failures.count == steps.count && !steps.isEmpty ? TerminationPlanner.alreadyGone : nil)
         }
         lastMessage = message
+        if refreshAfter { await settleAndRefresh() }
+        return message
+    }
+
+    private func settleAndRefresh() async {
         try? await Task.sleep(for: .milliseconds(400))
         lastPortScan = .distantPast
         await refresh()
-        return message
     }
 
     func closeSuspects(_ ids: Set<Int32>) async {
         for suspect in suspects where ids.contains(suspect.id) {
             let group = ProcessGroup(id: "suspect:\(suspect.id)", title: suspect.row.identified.title, subtitle: nil, kind: suspect.row.identified.kind, rows: [suspect.row])
-            _ = await close(group, mode: .normal)
+            _ = await close(group, mode: .normal, refreshAfter: false)
         }
+        await settleAndRefresh()
     }
 }

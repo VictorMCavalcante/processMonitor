@@ -70,9 +70,14 @@ private struct WindowRoot: View {
             NSApp.setActivationPolicy(.regular)
             NSApp.activate(ignoringOtherApps: true)
         }
+        .onReceive(NotificationCenter.default.publisher(for: NSWindow.didChangeOcclusionStateNotification)) { note in
+            guard let window = note.object as? NSWindow, window.identifier?.rawValue.hasPrefix("main") == true else { return }
+            store.windowOccluded = !window.occlusionState.contains(.visible)
+        }
         .onReceive(NotificationCenter.default.publisher(for: NSWindow.willCloseNotification)) { note in
             guard let window = note.object as? NSWindow, window.identifier?.rawValue.hasPrefix("main") == true else { return }
             store.windowVisible = false
+            store.windowOccluded = false
             NSApp.setActivationPolicy(.accessory)
         }
     }

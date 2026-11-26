@@ -158,7 +158,7 @@ struct CloseButton: View {
     let action: () -> Void
 
     var body: some View {
-        let reason: String? = if case .notAllowed(let r) = store.plan(for: group, mode: .normal) { r } else { nil }
+        let reason = TerminationPlanner.blockReason(group, myUid: getuid())
         Button(action: action) {
             Image(systemName: "xmark").font(.system(size: 10, weight: .bold))
         }

@@ -136,7 +136,7 @@ struct PopoverView: View {
     }
 
     private var consumers: some View {
-        let groups = Array(Grouping.group(store.rows, mode: .byApp).prefix(4))
+        let groups = Array(store.appGroups.prefix(4))
         let top = Double(groups.first?.footprintBytes ?? 1)
         return VStack(alignment: .leading, spacing: 8) {
             Text("MAIORES CONSUMIDORES").font(.system(size: 9.5, weight: .semibold)).tracking(0.6).foregroundStyle(Theme.muted2)
@@ -271,11 +271,16 @@ struct PressureRing: View {
 }
 
 enum PeakText {
-    static func when(_ d: Date, now: Date) -> String {
-        let cal = Calendar.current
+    private static let hourMinute: DateFormatter = {
         let f = DateFormatter()
         f.locale = Locale(identifier: "pt_BR")
         f.dateFormat = "HH:mm"
+        return f
+    }()
+
+    static func when(_ d: Date, now: Date) -> String {
+        let cal = Calendar.current
+        let f = hourMinute
         if cal.isDate(d, inSameDayAs: now) { return "hoje " + f.string(from: d) }
         if let y = cal.date(byAdding: .day, value: -1, to: now), cal.isDate(d, inSameDayAs: y) { return "ontem " + f.string(from: d) }
         f.dateFormat = "dd/MM HH:mm"
